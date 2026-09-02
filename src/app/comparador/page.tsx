@@ -9,7 +9,16 @@ type Especificacoes = {
   comprimento_m?: number;
   amperagem?: string;
   material?: string;
+  /** Classificação básica: "Preto", "Branco", "Colorido", ou combinação
+   * ("Preto, Branco") quando o mesmo código vem em mais de uma cor pelo
+   * mesmo preço. Ausente quando o catálogo do fornecedor não informa cor
+   * (é o caso de todo o catálogo KAID). */
+  cor?: string;
 };
+
+/** Opções fixas do filtro de cor — não dependem do que está cadastrado,
+ * são a classificação básica que a gente decidiu usar. */
+const CORES_FILTRO = ["Preto", "Branco", "Colorido"] as const;
 
 type ProdutoRow = {
   id: string;
@@ -26,6 +35,7 @@ type Filtros = {
   origem: string;
   destino: string;
   comprimento: string;
+  cor: string;
   fornecedor: string;
   busca: string;
 };
@@ -91,6 +101,10 @@ function aplicaFiltros(produtos: ProdutoRow[], filtros: Filtros) {
     if (filtros.origem && spec.conector_origem !== filtros.origem) return false;
     if (filtros.destino && spec.conector_destino !== filtros.destino) return false;
     if (filtros.comprimento && String(spec.comprimento_m) !== filtros.comprimento) return false;
+    // "cor" pode ter mais de um valor no mesmo produto (ex: "Preto, Branco",
+    // quando o código vem em mais de uma cor pelo mesmo preço) — por isso é
+    // "contém", não igualdade exata.
+    if (filtros.cor && !(spec.cor ?? "").includes(filtros.cor)) return false;
     if (filtros.fornecedor && produto.fornecedores?.nome !== filtros.fornecedor) return false;
 
     if (busca) {
@@ -115,6 +129,7 @@ export default async function ComparadorPage({
     origem: typeof params.origem === "string" ? params.origem : "",
     destino: typeof params.destino === "string" ? params.destino : "",
     comprimento: typeof params.comprimento === "string" ? params.comprimento : "",
+    cor: typeof params.cor === "string" ? params.cor : "",
     fornecedor: typeof params.fornecedor === "string" ? params.fornecedor : "",
     busca: typeof params.busca === "string" ? params.busca : "",
   };
@@ -155,6 +170,10 @@ export default async function ComparadorPage({
             opcoes={comprimentos}
             formatarLabel={(v) => formatComprimento(Number(v))}
           />
+        </Campo>
+
+        <Campo label="Cor">
+          <Select name="cor" valorAtual={filtros.cor} opcoes={[...CORES_FILTRO]} />
         </Campo>
 
         <Campo label="Fornecedor">
@@ -200,6 +219,7 @@ export default async function ComparadorPage({
               <Th>Código</Th>
               <Th>Conector</Th>
               <Th>Comprimento</Th>
+              <Th>Cor</Th>
               <Th>Potência</Th>
               <Th>Material</Th>
               <Th align="right">Preço/peça</Th>
@@ -224,6 +244,7 @@ export default async function ComparadorPage({
                     {spec.conector_origem ?? "—"} → {spec.conector_destino ?? "—"}
                   </Td>
                   <Td>{formatComprimento(spec.comprimento_m)}</Td>
+                  <Td>{spec.cor ?? "—"}</Td>
                   <Td>{spec.amperagem ?? "—"}</Td>
                   <Td className="max-w-[220px] truncate" title={spec.material}>
                     {spec.material ?? "—"}
@@ -239,7 +260,7 @@ export default async function ComparadorPage({
 
             {resultado.length === 0 && (
               <tr>
-                <td colSpan={8} className="p-6 text-center text-zinc-500 dark:text-zinc-400">
+                <td colSpan={9} className="p-6 text-center text-zinc-500 dark:text-zinc-400">
                   Nenhum cabo encontrado com esses filtros.
                 </td>
               </tr>
