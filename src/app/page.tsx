@@ -65,6 +65,13 @@ export default async function Home() {
           </div>
         )}
       </div>
+
+      <a
+        href="/comparador"
+        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
+      >
+        Comparador de cabos
+      </a>
     </main>
   );
 }
