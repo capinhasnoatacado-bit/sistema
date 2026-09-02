@@ -38,6 +38,7 @@ src/
 supabase/
   config.toml            # configuração do stack local
   migrations/              # TODO o schema do banco vive aqui (nunca alterar pelo Studio)
+  seed.sql                  # dados de fornecedores/produtos extraídos dos catálogos em PDF
 .env.local.example           # chaves necessárias, sem valores
 .env.local                    # credenciais reais (git-ignored, nunca commitar)
 ```
@@ -53,4 +54,12 @@ supabase/
 
 ## Escopo do negócio
 
-**A DEFINIR.** Nenhuma regra de negócio, tabela de domínio ou tela foi definida ainda. Esta sessão cobriu apenas a fundação técnica (stack, ambiente Supabase local, clients, variáveis de ambiente). O escopo será detalhado aos poucos nas próximas sessões e esta seção será atualizada conforme isso acontecer.
+Primeira funcionalidade real do sistema: ajudar a escolher, entre catálogos de fornecedores diferentes, o produto mais barato/equivalente na hora de repor estoque. Piloto feito com **cabos** (carregador/dados).
+
+- **Modelagem**: `fornecedores` (nome) e `produtos` (fornecedor, categoria, código, nome, preço **sempre por peça**, MOQ, e `especificacoes` em jsonb — pra cabo: `conector_origem`, `conector_destino`, `comprimento_m`, `amperagem`, `material`). `especificacoes` é jsonb de propósito: cada categoria futura tem atributos diferentes.
+- **Cadastro dos produtos**: sem parser automático de PDF — os catálogos de fornecedor têm formatos incompatíveis entre si (texto estruturado, imagem pura, texto desalinhado da tabela de preço). Claude lê o PDF (texto e/ou visual) e cadastra os produtos estruturados em `supabase/seed.sql`, com validação humana depois. Esse é o fluxo padrão pra qualquer catálogo novo, não só o piloto de cabos.
+- **Comparação**: não é automática — a tela `/comparador` dá filtro manual por conector/comprimento/fornecedor + busca livre, e quem decide o que é "equivalente" é quem está comprando.
+- **RLS**: desligado por enquanto (não tem Auth implementado ainda). Revisar quando o app for pro ar.
+- **Fornecedores cadastrados no piloto**: KAID, AGOLD, HREBOS (catálogos em PDF fornecidos pelo usuário).
+
+Fora do escopo até ser pedido: parser automático de PDF, categorias além de cabo, tela de upload/gerenciamento de catálogo, tela de cadastro manual de produto.
