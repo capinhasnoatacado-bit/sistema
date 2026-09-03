@@ -3,10 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { iniciarBenchmark } from "./actions";
+import { CampoCategoria } from "./CampoCategoria";
 
-/** Campo de link + botão — cria o job e leva pra tela de progresso dele. */
-export function ImportForm() {
+const INPUT_CLASS =
+  "h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 font-[family-name:var(--font-body)] text-[13.5px] font-normal tracking-normal text-[var(--ink)] normal-case focus-visible:outline-2 focus-visible:outline-[var(--accent)]";
+
+/** Campo de link + categoria + botão — cria o job e leva pra tela de progresso dele. */
+export function ImportForm({ categorias }: { categorias: string[] }) {
   const [url, setUrl] = useState("");
+  const [categoria, setCategoria] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -15,8 +20,9 @@ export function ImportForm() {
     setErro(null);
     startTransition(async () => {
       try {
-        const { jobId } = await iniciarBenchmark(url);
+        const { jobId } = await iniciarBenchmark(url, categoria);
         setUrl("");
+        setCategoria("");
         router.push(`/benchmark?job=${jobId}`);
       } catch (err) {
         setErro(err instanceof Error ? err.message : "Falha ao iniciar a importação.");
@@ -41,8 +47,13 @@ export function ImportForm() {
             value={url}
             onChange={(e) => setUrl(e.target.value)}
             placeholder="https://www.exemplo.com.br/categoria/acessorios"
-            className="h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 font-[family-name:var(--font-body)] text-[13.5px] font-normal tracking-normal text-[var(--ink)] normal-case focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+            className={INPUT_CLASS}
           />
+        </label>
+
+        <label className="flex w-[160px] flex-col gap-1.5 font-[family-name:var(--font-data-mono)] text-[10.5px] font-medium tracking-[0.06em] text-[var(--ink-muted)] uppercase">
+          Categoria (opcional)
+          <CampoCategoria value={categoria} onChange={setCategoria} categorias={categorias} className={INPUT_CLASS} />
         </label>
 
         <button

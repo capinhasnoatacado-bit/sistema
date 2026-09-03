@@ -21,7 +21,7 @@ import { parsePtBrCurrency } from "@/lib/scraping/parse-price";
 // essas actions (Server Actions herdam o maxDuration da rota que as invoca).
 
 /** Cria o job pro link colado pelo usuário e devolve o id pra tela começar a fazer polling. */
-export async function iniciarBenchmark(urlOrigem: string): Promise<{ jobId: string }> {
+export async function iniciarBenchmark(urlOrigem: string, categoria: string): Promise<{ jobId: string }> {
   const url = urlOrigem.trim();
   if (!url) {
     throw new Error("Cole o link de um produto ou categoria.");
@@ -33,7 +33,7 @@ export async function iniciarBenchmark(urlOrigem: string): Promise<{ jobId: stri
   }
 
   const supabase = await createClient();
-  const job = await criarBenchmarkJob(supabase, url);
+  const job = await criarBenchmarkJob(supabase, url, categoria.trim() || null);
   return { jobId: job.id };
 }
 
@@ -217,6 +217,7 @@ export type CadastroManualInput = {
   codigo: string;
   preco: string;
   especificacoesTexto: string;
+  categoria: string;
 };
 
 /**
@@ -248,14 +249,18 @@ export async function cadastrarProdutoManual(input: CadastroManualInput): Promis
   }
 
   const supabase = await createClient();
-  const job = await criarBenchmarkJobManual(supabase, {
-    urlProduto,
-    nome,
-    marca: input.marca.trim() || null,
-    codigo: input.codigo.trim() || null,
-    preco,
-    especificacoes: parseEspecificacoesTexto(input.especificacoesTexto),
-  });
+  const job = await criarBenchmarkJobManual(
+    supabase,
+    {
+      urlProduto,
+      nome,
+      marca: input.marca.trim() || null,
+      codigo: input.codigo.trim() || null,
+      preco,
+      especificacoes: parseEspecificacoesTexto(input.especificacoesTexto),
+    },
+    input.categoria.trim() || null,
+  );
 
   return { jobId: job.id };
 }
@@ -282,6 +287,7 @@ function parseEspecificacoesTexto(texto: string): Record<string, string> {
 export type CadastroManualLoteInput = {
   urlOrigem: string;
   linhas: string;
+  categoria: string;
 };
 
 export type CadastroManualLoteResultado = {
@@ -329,7 +335,7 @@ export async function cadastrarProdutosManualEmLote(
   }
 
   const supabase = await createClient();
-  const job = await criarBenchmarkJobManualEmLote(supabase, urlOrigem, produtos);
+  const job = await criarBenchmarkJobManualEmLote(supabase, urlOrigem, produtos, input.categoria.trim() || null);
 
   return { jobId: job.id, totalCadastrado: produtos.length, linhasIgnoradas };
 }

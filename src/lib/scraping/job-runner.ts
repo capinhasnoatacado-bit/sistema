@@ -22,6 +22,8 @@ export type BenchmarkJob = {
   url_origem: string;
   site_origem: string | null;
   tipo: "produto" | "categoria" | "manual" | null;
+  /** Categoria do produto (ex: "cabo") — texto livre, igual a `produtos.categoria`. `null` = "Sem categoria". */
+  categoria: string | null;
   status: BenchmarkJobStatus;
   total_encontrado: number;
   total_importado: number;
@@ -39,12 +41,16 @@ export type BenchmarkJob = {
  * nas chamadas seguintes de `processarProximoLote`, pra essa função nunca
  * correr risco de estourar o tempo de uma requisição.
  */
-export async function criarBenchmarkJob(supabase: SupabaseClient, urlOrigem: string): Promise<BenchmarkJob> {
+export async function criarBenchmarkJob(
+  supabase: SupabaseClient,
+  urlOrigem: string,
+  categoria: string | null,
+): Promise<BenchmarkJob> {
   const siteOrigem = safeHostname(urlOrigem);
 
   const { data, error } = await supabase
     .from("benchmark_jobs")
-    .insert({ url_origem: urlOrigem, site_origem: siteOrigem })
+    .insert({ url_origem: urlOrigem, site_origem: siteOrigem, categoria })
     .select()
     .single();
 
@@ -74,6 +80,7 @@ export type NovoProdutoManual = {
 export async function criarBenchmarkJobManual(
   supabase: SupabaseClient,
   produto: NovoProdutoManual,
+  categoria: string | null,
 ): Promise<BenchmarkJob> {
   const agora = new Date().toISOString();
 
@@ -83,6 +90,7 @@ export async function criarBenchmarkJobManual(
       url_origem: produto.urlProduto,
       site_origem: safeHostname(produto.urlProduto),
       tipo: "manual",
+      categoria,
       status: "concluido",
       total_encontrado: 1,
       total_importado: 1,
@@ -130,6 +138,7 @@ export async function criarBenchmarkJobManualEmLote(
   supabase: SupabaseClient,
   urlOrigem: string,
   produtos: ProdutoManualSemUrl[],
+  categoria: string | null,
 ): Promise<BenchmarkJob> {
   const agora = new Date().toISOString();
 
@@ -139,6 +148,7 @@ export async function criarBenchmarkJobManualEmLote(
       url_origem: urlOrigem,
       site_origem: safeHostname(urlOrigem),
       tipo: "manual",
+      categoria,
       status: "concluido",
       total_encontrado: produtos.length,
       total_importado: produtos.length,

@@ -10,16 +10,9 @@ const ABA_CLASS_INATIVA = "border-[var(--border)] bg-[var(--surface)] text-[var(
 
 type Aba = "link" | "manual" | "lote";
 
-const FORM_POR_ABA: Record<Aba, React.ComponentType> = {
-  link: ImportForm,
-  manual: ManualEntryForm,
-  lote: ManualBulkForm,
-};
-
 /** Alterna entre importar por link (automático), cadastrar 1 produto manualmente (site com login) ou vários de uma vez (listagem sem scraping). */
-export function ImportPanel() {
+export function ImportPanel({ categorias }: { categorias: string[] }) {
   const [aba, setAba] = useState<Aba>("link");
-  const FormularioAtivo = FORM_POR_ABA[aba];
 
   return (
     <div className="flex flex-col gap-3">
@@ -47,7 +40,9 @@ export function ImportPanel() {
         </button>
       </div>
 
-      <FormularioAtivo />
+      {aba === "link" && <ImportForm categorias={categorias} />}
+      {aba === "manual" && <ManualEntryForm categorias={categorias} />}
+      {aba === "lote" && <ManualBulkForm categorias={categorias} />}
     </div>
   );
 }
