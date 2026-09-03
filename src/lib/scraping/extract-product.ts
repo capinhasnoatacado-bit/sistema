@@ -165,33 +165,54 @@ function extractFromJsonLd($: CheerioAPI): JsonLdResult {
 }
 
 function isProductType(type: unknown): boolean {
-  if (typeof type === "string") return type.toLowerCase() === "product";
-  if (Array.isArray(type)) return type.some((t) => typeof t === "string" && t.toLowerCase() === "product");
+  return matchesAnyType(type, ["product"]);
+}
+
+// Páginas de categoria/busca costumam publicar um "ItemList"/"CollectionPage"
+// onde CADA item da lista carrega sua própria ficha "Product" lá dentro —
+// prática comum e até recomendada pelo Google. Sem essa checagem, procurar
+// por "Product" recursivamente acha o primeiro produto da lista e conclui
+// (errado) que a página inteira é sobre 1 produto só.
+function isListingType(type: unknown): boolean {
+  return matchesAnyType(type, ["itemlist", "collectionpage", "searchresultspage", "offercatalog"]);
+}
+
+function matchesAnyType(type: unknown, tipos: string[]): boolean {
+  if (typeof type === "string") return tipos.includes(type.toLowerCase());
+  if (Array.isArray(type)) return type.some((t) => typeof t === "string" && tipos.includes(t.toLowerCase()));
   return false;
 }
 
-/** Procura recursivamente (JSON-LD costuma vir dentro de "@graph" ou arrays) um nó `{"@type": "Product"}`. */
-function findProductNode(node: unknown, depth = 0): Record<string, unknown> | null {
+/** Procura recursivamente (JSON-LD costuma vir dentro de "@graph" ou arrays) o primeiro nó cujo `@type` bate com `ehDoTipo`. */
+function findNodeOfType(
+  node: unknown,
+  ehDoTipo: (type: unknown) => boolean,
+  depth = 0,
+): Record<string, unknown> | null {
   if (depth > 6 || node === null || typeof node !== "object") return null;
 
   if (Array.isArray(node)) {
     for (const item of node) {
-      const found = findProductNode(item, depth + 1);
+      const found = findNodeOfType(item, ehDoTipo, depth + 1);
       if (found) return found;
     }
     return null;
   }
 
   const obj = node as Record<string, unknown>;
-  if (isProductType(obj["@type"])) return obj;
+  if (ehDoTipo(obj["@type"])) return obj;
 
   for (const value of Object.values(obj)) {
     if (value && typeof value === "object") {
-      const found = findProductNode(value, depth + 1);
+      const found = findNodeOfType(value, ehDoTipo, depth + 1);
       if (found) return found;
     }
   }
   return null;
+}
+
+function findProductNode(node: unknown): Record<string, unknown> | null {
+  return findNodeOfType(node, isProductType);
 }
 
 /** JSON-LD representa texto de formas variadas: string solta, array, ou objeto com `name`/`url`. */
@@ -248,20 +269,32 @@ function extractAdditionalProperties(node: Record<string, unknown>): Record<stri
  */
 export function pageDeclaresProductSchema(html: string): boolean {
   const $ = cheerio.load(html);
-  let found = false;
+  let ehProduto = false;
+  let ehListagem = false;
 
   $('script[type="application/ld+json"]').each((_, el) => {
-    if (found) return;
+    if (ehListagem) return; // já decidido que é listagem — nem vale a pena olhar os outros blocos
     const raw = $(el).contents().text();
     if (!raw?.trim()) return;
+
+    let parsed: unknown;
     try {
-      if (findProductNode(JSON.parse(raw))) found = true;
+      parsed = JSON.parse(raw);
     } catch {
-      // bloco de JSON-LD malformado — ignora e segue tentando os outros
+      return; // bloco de JSON-LD malformado — ignora e segue tentando os outros
     }
+
+    // "ItemList"/"CollectionPage" tem prioridade: mesmo que haja um
+    // "Product" aninhado dentro dela (1 por item da lista), a página em si
+    // é uma listagem, não a página de um produto só.
+    if (findNodeOfType(parsed, isListingType)) {
+      ehListagem = true;
+      return;
+    }
+    if (findProductNode(parsed)) ehProduto = true;
   });
 
-  return found;
+  return !ehListagem && ehProduto;
 }
 
 // ---------------------------------------------------------------------------
