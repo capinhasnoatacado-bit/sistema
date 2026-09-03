@@ -18,8 +18,10 @@ import type { ExtractedProduct } from "./types";
  *      recurso, mais ruidoso, só usada se as camadas acima acharam pouco.
  *
  * `codigo` (pra cruzar com `produtos.codigo` do catálogo próprio) vem do
- * sku/mpn do JSON-LD quando existe; senão cai pro primeiro rótulo tipo
- * "Código"/"SKU"/"Modelo" achado nas especificações da página.
+ * model/mpn/sku do JSON-LD, nessa ordem — "sku" fica por último porque em
+ * várias plataformas ele é um id interno de estoque da loja, não o código
+ * impresso no produto. Sem JSON-LD, cai pro primeiro rótulo tipo "Código"/
+ * "SKU"/"Modelo" achado nas especificações da página.
  *
  * Não há garantia de 100% de acerto em qualquer site — sites sem dado
  * estruturado e com HTML muito específico podem sair com campos em branco.
@@ -109,7 +111,12 @@ function extractFromJsonLd($: CheerioAPI): JsonLdResult {
     result.marca ??= firstString(product.brand);
     result.imagemUrl ??= firstString(product.image);
     result.preco ??= extractOfferPrice(product.offers);
-    result.codigo ??= firstString(product.sku ?? product.mpn);
+    // Prioridade: "model" (schema.org: o modelo mostrado pro cliente,
+    // costuma bater com o que a loja exibe na tela) > "mpn" (código do
+    // fabricante) > "sku" por último — em várias plataformas de e-commerce
+    // (ex: Tray) o "sku" é um id interno de estoque da própria loja, sem
+    // relação com o código impresso no produto/mostrado na página.
+    result.codigo ??= firstString(product.model ?? product.mpn ?? product.sku);
     Object.assign(result.especificacoes, extractAdditionalProperties(product));
   });
 
