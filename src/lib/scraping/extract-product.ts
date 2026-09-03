@@ -17,11 +17,13 @@ import type { ExtractedProduct } from "./types";
  *   4. Varredura genérica de texto em padrão "Rótulo: Valor" — último
  *      recurso, mais ruidoso, só usada se as camadas acima acharam pouco.
  *
- * `codigo` (pra cruzar com `produtos.codigo` do catálogo próprio) vem do
- * model/mpn/sku do JSON-LD, nessa ordem — "sku" fica por último porque em
- * várias plataformas ele é um id interno de estoque da loja, não o código
- * impresso no produto. Sem JSON-LD, cai pro primeiro rótulo tipo "Código"/
- * "SKU"/"Modelo" achado nas especificações da página.
+ * `codigo` (pra cruzar com `produtos.codigo` do catálogo próprio) compara o
+ * candidato do JSON-LD (model/mpn/sku, nessa ordem) com o achado num rótulo
+ * tipo "Código"/"SKU"/"Modelo" nas especificações da página, e fica com o
+ * que NÃO for só dígitos — em várias plataformas de e-commerce, um
+ * sku/model só numérico é o id interno de estoque da loja (ex: "9098"),
+ * não o código real do produto (que quase sempre tem letra, ex: "CB143").
+ * Um valor só numérico só é usado se não sobrar nenhum candidato melhor.
  *
  * Não há garantia de 100% de acerto em qualquer site — sites sem dado
  * estruturado e com HTML muito específico podem sair com campos em branco.
@@ -44,7 +46,7 @@ export function extractProduct(html: string, url: string): ExtractedProduct {
 
   const nome = fromJsonLd.nome ?? fromMeta.nome ?? extractH1($);
   const marca = fromJsonLd.marca ?? fromMeta.marca ?? especificacoes["Marca"] ?? null;
-  const codigo = fromJsonLd.codigo ?? findCodigoEmEspecificacoes(especificacoes);
+  const codigo = melhorCodigo(fromJsonLd.codigo, findCodigoEmEspecificacoes(especificacoes));
   const preco = fromJsonLd.preco ?? fromMeta.preco ?? extractPriceFromDom($);
   const imagemUrl = resolveUrl(fromJsonLd.imagemUrl ?? fromMeta.imagemUrl ?? extractImageFromDom($), url);
 
@@ -68,6 +70,19 @@ function findCodigoEmEspecificacoes(especificacoes: Record<string, string>): str
     if (CODIGO_LABEL.test(label.trim())) return value;
   }
   return null;
+}
+
+const CODIGO_PURAMENTE_NUMERICO = /^\d+$/;
+
+/**
+ * Entre os candidatos a código, prefere o primeiro que não for só dígitos
+ * (ver nota em `extractProduct`) — só usa um valor puramente numérico se
+ * não sobrar nenhuma alternativa melhor.
+ */
+function melhorCodigo(...candidatos: Array<string | null>): string | null {
+  const naoNumerico = candidatos.find((c) => c && !CODIGO_PURAMENTE_NUMERICO.test(c));
+  if (naoNumerico) return naoNumerico;
+  return candidatos.find((c) => c) ?? null;
 }
 
 // ---------------------------------------------------------------------------
