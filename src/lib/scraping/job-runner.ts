@@ -116,6 +116,62 @@ export async function criarBenchmarkJobManual(
   return job as BenchmarkJob;
 }
 
+export type ProdutoManualSemUrl = Omit<NovoProdutoManual, "urlProduto">;
+
+/**
+ * Mesma ideia do cadastro manual único, mas pra quando o site nem dá pra
+ * scraping nem é 1 produto só — ex: uma listagem inteira com dezenas de
+ * produtos que o usuário leu num (ou mais) print(s) e passou pro Claude.
+ * Como não tem link individual por produto (só o da listagem), cada linha
+ * ganha uma `url_produto` sintética baseada nela pra satisfazer a
+ * constraint de único (job_id, url_produto).
+ */
+export async function criarBenchmarkJobManualEmLote(
+  supabase: SupabaseClient,
+  urlOrigem: string,
+  produtos: ProdutoManualSemUrl[],
+): Promise<BenchmarkJob> {
+  const agora = new Date().toISOString();
+
+  const { data: job, error: erroJob } = await supabase
+    .from("benchmark_jobs")
+    .insert({
+      url_origem: urlOrigem,
+      site_origem: safeHostname(urlOrigem),
+      tipo: "manual",
+      status: "concluido",
+      total_encontrado: produtos.length,
+      total_importado: produtos.length,
+      iniciado_em: agora,
+      finalizado_em: agora,
+    })
+    .select()
+    .single();
+
+  if (erroJob || !job) {
+    throw new Error(`Falha ao criar o job manual: ${erroJob?.message ?? "erro desconhecido"}`);
+  }
+
+  const linhas = produtos.map((produto, indice) => ({
+    job_id: job.id,
+    url_produto: `${urlOrigem}#${indice + 1}`,
+    nome: produto.nome,
+    marca: produto.marca,
+    codigo: produto.codigo,
+    preco: produto.preco,
+    especificacoes: produto.especificacoes,
+  }));
+
+  const { error: erroProdutos } = await supabase.from("benchmark_produtos").insert(linhas);
+
+  if (erroProdutos) {
+    await supabase.from("benchmark_jobs").delete().eq("id", job.id);
+    throw new Error(`Falha ao salvar os produtos: ${erroProdutos.message}`);
+  }
+
+  return job as BenchmarkJob;
+}
+
 async function buscarJob(supabase: SupabaseClient, jobId: string): Promise<BenchmarkJob> {
   const { data, error } = await supabase.from("benchmark_jobs").select().eq("id", jobId).single();
   if (error || !data) {

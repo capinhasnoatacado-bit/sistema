@@ -1,7 +1,14 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { criarBenchmarkJob, criarBenchmarkJobManual, processarProximoLote, type BenchmarkJob } from "@/lib/scraping/job-runner";
+import {
+  criarBenchmarkJob,
+  criarBenchmarkJobManual,
+  criarBenchmarkJobManualEmLote,
+  processarProximoLote,
+  type BenchmarkJob,
+  type ProdutoManualSemUrl,
+} from "@/lib/scraping/job-runner";
 import { parsePtBrCurrency } from "@/lib/scraping/parse-price";
 
 // Nota pra quando a tela (`page.tsx`) for criada: como o processamento roda
@@ -105,6 +112,94 @@ function parseEspecificacoesTexto(texto: string): Record<string, string> {
 
     const label = linha.slice(0, idx).trim();
     const value = linha.slice(idx + 1).trim();
+    if (label && value) especificacoes[label] = value;
+  }
+
+  return especificacoes;
+}
+
+export type CadastroManualLoteInput = {
+  urlOrigem: string;
+  linhas: string;
+};
+
+export type CadastroManualLoteResultado = {
+  jobId: string;
+  totalCadastrado: number;
+  linhasIgnoradas: number;
+};
+
+/**
+ * Cadastro manual em lote: pra quando não é 1 produto só (login) mas uma
+ * listagem inteira que o scraping não consegue processar. Cada linha do
+ * texto vira 1 produto — formato "Nome | Código | Marca | Preço |
+ * Especificações", com Código/Marca/Preço/Especificações opcionais.
+ * Especificações (se usado) vem como "Rótulo=Valor; Rótulo=Valor".
+ */
+export async function cadastrarProdutosManualEmLote(
+  input: CadastroManualLoteInput,
+): Promise<CadastroManualLoteResultado> {
+  const urlOrigem = input.urlOrigem.trim();
+  if (!urlOrigem) {
+    throw new Error("Cole o link da listagem (mesmo que o scraping não funcione nela) como referência.");
+  }
+  try {
+    new URL(urlOrigem);
+  } catch {
+    throw new Error("Esse link não parece válido.");
+  }
+
+  const linhasBrutas = input.linhas.split("\n").map((l) => l.trim()).filter(Boolean);
+  if (linhasBrutas.length === 0) {
+    throw new Error("Cole pelo menos uma linha de produto.");
+  }
+
+  const produtos: ProdutoManualSemUrl[] = [];
+  let linhasIgnoradas = 0;
+
+  for (const linha of linhasBrutas) {
+    const produto = parseLinhaProdutoLote(linha);
+    if (produto) produtos.push(produto);
+    else linhasIgnoradas += 1;
+  }
+
+  if (produtos.length === 0) {
+    throw new Error("Nenhuma linha ficou num formato reconhecível (precisa de pelo menos o nome).");
+  }
+
+  const supabase = await createClient();
+  const job = await criarBenchmarkJobManualEmLote(supabase, urlOrigem, produtos);
+
+  return { jobId: job.id, totalCadastrado: produtos.length, linhasIgnoradas };
+}
+
+function parseLinhaProdutoLote(linha: string): ProdutoManualSemUrl | null {
+  const [nomeBruto, codigoBruto, marcaBruto, precoBruto, especBruto] = linha.split("|").map((p) => p.trim());
+
+  const nome = nomeBruto?.trim();
+  if (!nome) return null;
+
+  const preco = precoBruto ? parsePtBrCurrency(precoBruto) : null;
+
+  return {
+    nome,
+    codigo: codigoBruto || null,
+    marca: marcaBruto || null,
+    preco,
+    especificacoes: especBruto ? parseEspecificacoesLinhaUnica(especBruto) : {},
+  };
+}
+
+/** "Rótulo=Valor; Rótulo=Valor" — versão de 1 linha do mesmo par rótulo/valor, pro cadastro em lote. */
+function parseEspecificacoesLinhaUnica(texto: string): Record<string, string> {
+  const especificacoes: Record<string, string> = {};
+
+  for (const par of texto.split(";")) {
+    const idx = par.indexOf("=");
+    if (idx === -1) continue;
+
+    const label = par.slice(0, idx).trim();
+    const value = par.slice(idx + 1).trim();
     if (label && value) especificacoes[label] = value;
   }
 
