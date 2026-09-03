@@ -24,7 +24,11 @@ supabase stop                # derruba o stack local
 supabase status               # mostra URLs e chaves do stack local
 supabase db diff -f <nome>     # gera uma migration a partir de mudanças feitas localmente
 supabase migration new <nome>   # cria um arquivo de migration vazio
+supabase migration up            # aplica só as migrations pendentes, SEM apagar dados existentes
+supabase db reset                  # apaga o banco local inteiro e recria (migrations + seed.sql) — só usar quando isso for intencional
 ```
+
+⚠️ **`supabase db reset` apaga qualquer dado que não esteja em `seed.sql`** — hoje isso inclui tudo de `benchmark_jobs`/`benchmark_produtos` (a tela `/benchmark`), que não tem seed. Pra aplicar uma migration nova sem perder esses dados, use `supabase migration up`. Só peça `db reset` quando for realmente o caso (ex: banco corrompido, ou o próprio catálogo de `seed.sql` mudou e precisa recarregar).
 
 ## Estrutura de pastas
 
