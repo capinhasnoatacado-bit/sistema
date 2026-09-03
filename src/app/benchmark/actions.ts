@@ -3,10 +3,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
+  atualizarPrecosDeProdutos,
   criarBenchmarkJob,
   criarBenchmarkJobManual,
   criarBenchmarkJobManualEmLote,
   processarProximoLote,
+  type AtualizarPrecoItemResultado,
   type BenchmarkJob,
   type ProdutoManualSemUrl,
 } from "@/lib/scraping/job-runner";
@@ -194,6 +196,18 @@ export async function excluirProdutosBenchmarkEmLote(produtoIds: string[]): Prom
         .eq("id", jobId);
     }
   }
+}
+
+/**
+ * Botão "Atualizar preços": rebusca a página de cada produto já importado e
+ * grava só o preço novo — nome, código, marca e especificações continuam
+ * como estão (preserva correções manuais feitas na tabela). Chamada em
+ * lotes pequenos pelo componente cliente, igual ao polling da importação.
+ */
+export async function atualizarPrecosBenchmark(produtoIds: string[]): Promise<AtualizarPrecoItemResultado[]> {
+  if (produtoIds.length === 0) return [];
+  const supabase = await createClient();
+  return atualizarPrecosDeProdutos(supabase, produtoIds);
 }
 
 export type CadastroManualInput = {

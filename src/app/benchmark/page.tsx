@@ -87,7 +87,7 @@ export default async function BenchmarkPage({
             <JobProgress key={jobSelecionado.id} job={jobSelecionado} />
 
             {jobSelecionado.status === "concluido" && (
-              <ProdutosTable produtos={produtos} />
+              <ProdutosTable produtos={produtos} jobTipo={jobSelecionado.tipo} />
             )}
           </div>
         )}

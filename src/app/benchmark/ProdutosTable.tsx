@@ -8,6 +8,7 @@ import {
   excluirProdutoBenchmark,
   excluirProdutosBenchmarkEmLote,
 } from "./actions";
+import { AtualizarPrecosButton } from "./AtualizarPrecosButton";
 
 export type BenchmarkProdutoRow = {
   id: string;
@@ -55,7 +56,14 @@ function camposIniciais(produto: BenchmarkProdutoRow): CamposEdicao {
  * ou "Editar tabela" no topo pra abrir todas as linhas de uma vez e salvar
  * tudo junto — útil depois de uma importação grande com vários erros espalhados.
  */
-export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] }) {
+export function ProdutosTable({
+  produtos,
+  jobTipo,
+}: {
+  produtos: BenchmarkProdutoRow[];
+  /** Job "manual" não tem página real pra rebuscar preço — some o botão "Atualizar preços" nesse caso. */
+  jobTipo: "produto" | "categoria" | "manual" | null;
+}) {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [modoEdicaoTotal, setModoEdicaoTotal] = useState(false);
   const [edicoes, setEdicoes] = useState<Record<string, CamposEdicao>>({});
@@ -180,14 +188,17 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
             {erroTudo && <p className="text-[12px] text-[var(--bad)]">{erroTudo}</p>}
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={iniciarEdicaoTotal}
-            disabled={produtos.length === 0}
-            className="h-8 rounded-md border border-[var(--border)] px-3 text-[12.5px] font-medium text-[var(--ink-muted)] hover:text-[var(--ink)] disabled:opacity-50"
-          >
-            ✏️ Editar tabela
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={iniciarEdicaoTotal}
+              disabled={produtos.length === 0}
+              className="h-8 rounded-md border border-[var(--border)] px-3 text-[12.5px] font-medium text-[var(--ink-muted)] hover:text-[var(--ink)] disabled:opacity-50"
+            >
+              ✏️ Editar tabela
+            </button>
+            {jobTipo !== "manual" && <AtualizarPrecosButton produtoIds={produtos.map((produto) => produto.id)} />}
+          </div>
         )}
       </div>
 

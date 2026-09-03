@@ -304,6 +304,71 @@ async function atualizarJob(
   return data as BenchmarkJob;
 }
 
+export type AtualizarPrecoItemResultado = {
+  produtoId: string;
+  ok: boolean;
+  precoAntigo: number | null;
+  precoNovo: number | null;
+  mensagem?: string;
+};
+
+/**
+ * Rebusca o preço de um lote de produtos já importados, sem tocar em nome,
+ * marca, código ou especificações — preserva qualquer correção manual feita
+ * na tabela depois da importação. Pensado pra ser chamado repetidamente com
+ * lotes pequenos de ids (mesmo motivo do `TAMANHO_LOTE_PADRAO`/
+ * `DELAY_ENTRE_PRODUTOS_MS` acima: não estourar o tempo de uma requisição
+ * nem sobrecarregar o site do concorrente).
+ */
+export async function atualizarPrecosDeProdutos(
+  supabase: SupabaseClient,
+  produtoIds: string[],
+): Promise<AtualizarPrecoItemResultado[]> {
+  const { data: produtos, error } = await supabase
+    .from("benchmark_produtos")
+    .select("id, url_produto, preco")
+    .in("id", produtoIds);
+
+  if (error) {
+    throw new Error(`Falha ao buscar os produtos: ${error.message}`);
+  }
+
+  const resultados: AtualizarPrecoItemResultado[] = [];
+
+  for (const [indice, produto] of (produtos ?? []).entries()) {
+    if (indice > 0) await delay(DELAY_ENTRE_PRODUTOS_MS);
+
+    const precoAntigo = produto.preco as number | null;
+    try {
+      const html = await fetchHtml(produto.url_produto as string);
+      const extraido = extractProduct(html, produto.url_produto as string);
+
+      if (extraido.preco === null) {
+        throw new Error("Não encontrei preço nessa página.");
+      }
+
+      const { error: erroUpdate } = await supabase
+        .from("benchmark_produtos")
+        .update({ preco: extraido.preco, capturado_em: new Date().toISOString() })
+        .eq("id", produto.id);
+
+      if (erroUpdate) throw new Error(erroUpdate.message);
+
+      resultados.push({ produtoId: produto.id as string, ok: true, precoAntigo, precoNovo: extraido.preco });
+    } catch (err) {
+      resultados.push({
+        produtoId: produto.id as string,
+        ok: false,
+        precoAntigo,
+        precoNovo: null,
+        mensagem: err instanceof Error ? err.message : "Falha ao atualizar.",
+      });
+    }
+  }
+
+  return resultados;
+}
+
 function safeHostname(url: string): string | null {
   try {
     return new URL(url).hostname;
