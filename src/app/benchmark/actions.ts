@@ -153,6 +153,49 @@ export async function excluirProdutoBenchmark(produtoId: string): Promise<void> 
   }
 }
 
+/**
+ * Exclui vários produtos de uma vez (modo "editar tabela", seleção por
+ * checkbox) — mesmo ajuste de contador do job que a exclusão individual,
+ * só que somando quantos produtos de cada job saíram no lote.
+ */
+export async function excluirProdutosBenchmarkEmLote(produtoIds: string[]): Promise<void> {
+  if (produtoIds.length === 0) return;
+
+  const supabase = await createClient();
+
+  const { data: produtos, error: erroSelect } = await supabase
+    .from("benchmark_produtos")
+    .select("id, job_id")
+    .in("id", produtoIds);
+
+  if (erroSelect) {
+    throw new Error(`Falha ao buscar os produtos: ${erroSelect.message}`);
+  }
+  if (!produtos || produtos.length === 0) return;
+
+  const { error: erroDelete } = await supabase.from("benchmark_produtos").delete().in("id", produtoIds);
+  if (erroDelete) {
+    throw new Error(`Falha ao excluir os produtos: ${erroDelete.message}`);
+  }
+
+  // Normalmente é só 1 job (o aberto na tela), mas soma por job pra ficar correto mesmo se não for.
+  const quantidadePorJob = new Map<string, number>();
+  for (const produto of produtos) {
+    const jobId = produto.job_id as string;
+    quantidadePorJob.set(jobId, (quantidadePorJob.get(jobId) ?? 0) + 1);
+  }
+
+  for (const [jobId, quantidade] of quantidadePorJob) {
+    const { data: job } = await supabase.from("benchmark_jobs").select("total_importado").eq("id", jobId).single();
+    if (job) {
+      await supabase
+        .from("benchmark_jobs")
+        .update({ total_importado: Math.max(0, (job.total_importado as number) - quantidade) })
+        .eq("id", jobId);
+    }
+  }
+}
+
 export type CadastroManualInput = {
   urlProduto: string;
   nome: string;

@@ -2,7 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { atualizarProdutoBenchmark, atualizarProdutosBenchmarkEmLote, excluirProdutoBenchmark } from "./actions";
+import {
+  atualizarProdutoBenchmark,
+  atualizarProdutosBenchmarkEmLote,
+  excluirProdutoBenchmark,
+  excluirProdutosBenchmarkEmLote,
+} from "./actions";
 
 export type BenchmarkProdutoRow = {
   id: string;
@@ -54,14 +59,17 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [modoEdicaoTotal, setModoEdicaoTotal] = useState(false);
   const [edicoes, setEdicoes] = useState<Record<string, CamposEdicao>>({});
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [erroTudo, setErroTudo] = useState<string | null>(null);
   const [salvandoTudo, startTransitionTudo] = useTransition();
+  const [excluindoSelecionados, startTransitionExcluir] = useTransition();
   const router = useRouter();
 
   function iniciarEdicaoTotal() {
     const inicial: Record<string, CamposEdicao> = {};
     for (const produto of produtos) inicial[produto.id] = camposIniciais(produto);
     setEdicoes(inicial);
+    setSelecionados(new Set());
     setErroTudo(null);
     setEditandoId(null);
     setModoEdicaoTotal(true);
@@ -70,11 +78,42 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
   function cancelarEdicaoTotal() {
     setModoEdicaoTotal(false);
     setEdicoes({});
+    setSelecionados(new Set());
     setErroTudo(null);
   }
 
   function atualizarCampo(produtoId: string, campo: keyof CamposEdicao, valor: string) {
     setEdicoes((atual) => ({ ...atual, [produtoId]: { ...atual[produtoId], [campo]: valor } }));
+  }
+
+  function alternarSelecionado(produtoId: string) {
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(produtoId)) novo.delete(produtoId);
+      else novo.add(produtoId);
+      return novo;
+    });
+  }
+
+  function alternarSelecionarTodos() {
+    setSelecionados((atual) => (atual.size === produtos.length ? new Set() : new Set(produtos.map((p) => p.id))));
+  }
+
+  function excluirSelecionados() {
+    if (selecionados.size === 0) return;
+    if (!confirm(`Excluir ${selecionados.size} produto(s) selecionado(s)? Não dá pra desfazer.`)) return;
+
+    const idsParaExcluir = [...selecionados];
+    startTransitionExcluir(async () => {
+      await excluirProdutosBenchmarkEmLote(idsParaExcluir);
+      setSelecionados(new Set());
+      setEdicoes((atual) => {
+        const novo = { ...atual };
+        for (const id of idsParaExcluir) delete novo[id];
+        return novo;
+      });
+      router.refresh();
+    });
   }
 
   function salvarTudo() {
@@ -102,6 +141,7 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
       } else {
         setModoEdicaoTotal(false);
         setEdicoes({});
+        setSelecionados(new Set());
       }
     });
   }
@@ -127,6 +167,16 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
             >
               Cancelar
             </button>
+            {selecionados.size > 0 && (
+              <button
+                type="button"
+                onClick={excluirSelecionados}
+                disabled={excluindoSelecionados}
+                className="h-8 rounded-md border border-[var(--bad-border)] bg-[var(--bad-bg)] px-3 text-[12.5px] font-medium text-[var(--bad)] disabled:opacity-60"
+              >
+                {excluindoSelecionados ? "Excluindo…" : `🗑️ Excluir selecionados (${selecionados.size})`}
+              </button>
+            )}
             {erroTudo && <p className="text-[12px] text-[var(--bad)]">{erroTudo}</p>}
           </div>
         ) : (
@@ -145,6 +195,16 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
         <table className="w-full min-w-[960px] border-collapse text-[13.5px]">
           <thead>
             <tr>
+              {modoEdicaoTotal && (
+                <Th>
+                  <input
+                    type="checkbox"
+                    checked={produtos.length > 0 && selecionados.size === produtos.length}
+                    onChange={alternarSelecionarTodos}
+                    aria-label="Selecionar todos os produtos"
+                  />
+                </Th>
+              )}
               <Th>Produto</Th>
               <Th>Código</Th>
               <Th>Marca</Th>
@@ -161,6 +221,8 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
                   url={produto.url_produto}
                   valores={edicoes[produto.id] ?? camposIniciais(produto)}
                   onChange={(campo, valor) => atualizarCampo(produto.id, campo, valor)}
+                  selecionado={selecionados.has(produto.id)}
+                  onToggleSelecionado={() => alternarSelecionado(produto.id)}
                 />
               ) : editandoId === produto.id ? (
                 <LinhaEdicao key={produto.id} produto={produto} onCancelar={() => setEditandoId(null)} />
@@ -171,7 +233,7 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
 
             {produtos.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-10 text-center text-[var(--ink-muted)]">
+                <td colSpan={modoEdicaoTotal ? 7 : 6} className="p-10 text-center text-[var(--ink-muted)]">
                   Nenhum produto foi importado nesse job.
                 </td>
               </tr>
@@ -331,18 +393,38 @@ function LinhaEdicao({ produto, onCancelar }: { produto: BenchmarkProdutoRow; on
   );
 }
 
-/** Mesma linha de campos da edição individual, mas sem Salvar/Cancelar próprios — o estado vive no `ProdutosTable` (modo "Editar tabela") e é salvo tudo junto. */
+/**
+ * Mesma linha de campos da edição individual, mas sem Salvar/Cancelar
+ * próprios — o estado vive no `ProdutosTable` (modo "Editar tabela") e é
+ * salvo tudo junto. Tem também a checkbox de seleção pra exclusão em lote.
+ */
 function LinhaEdicaoEmLote({
   url,
   valores,
   onChange,
+  selecionado,
+  onToggleSelecionado,
 }: {
   url: string;
   valores: CamposEdicao;
   onChange: (campo: keyof CamposEdicao, valor: string) => void;
+  selecionado: boolean;
+  onToggleSelecionado: () => void;
 }) {
   return (
-    <tr className="border-b border-[var(--border)]/60 bg-[var(--surface-alt)] align-top last:border-0">
+    <tr
+      className={`border-b border-[var(--border)]/60 align-top last:border-0 ${
+        selecionado ? "bg-[var(--accent)]/10" : "bg-[var(--surface-alt)]"
+      }`}
+    >
+      <td className="px-3.5 py-2.5">
+        <input
+          type="checkbox"
+          checked={selecionado}
+          onChange={onToggleSelecionado}
+          aria-label="Selecionar produto"
+        />
+      </td>
       <td className="px-3.5 py-2.5">
         <input value={valores.nome} onChange={(e) => onChange("nome", e.target.value)} className={CAMPO_CLASS} />
       </td>
