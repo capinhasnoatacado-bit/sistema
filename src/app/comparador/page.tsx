@@ -1,26 +1,11 @@
-import { Barlow_Condensed, IBM_Plex_Mono, Public_Sans } from "next/font/google";
 import { createClient } from "@/lib/supabase/server";
 import { CartBadge } from "@/components/CartBadge";
 import { AddToCartButton } from "./AddToCartButton";
+import { CLASSES_FONTES } from "@/lib/fonts";
+import { TEMA_ESCURO, TAG_FORNECEDOR, TAG_FORNECEDOR_PADRAO } from "@/lib/theme";
 
 // searchParams é request-time (não dá pra pré-renderizar essa página).
 export const dynamic = "force-dynamic";
-
-const display = Barlow_Condensed({
-  variable: "--font-display",
-  weight: ["600", "700"],
-  subsets: ["latin"],
-});
-const mono = IBM_Plex_Mono({
-  variable: "--font-data-mono",
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
-});
-const body = Public_Sans({
-  variable: "--font-body",
-  weight: ["400", "500", "600"],
-  subsets: ["latin"],
-});
 
 type Especificacoes = {
   conector_origem?: string;
@@ -38,15 +23,6 @@ type Especificacoes = {
 /** Opções fixas do filtro de cor — não dependem do que está cadastrado,
  * são a classificação básica que a gente decidiu usar. */
 const CORES_FILTRO = ["Preto", "Branco", "Colorido"] as const;
-
-/** Uma cor de tag por fornecedor, pra escanear a coluna rápido. Cai num
- * neutro se aparecer um fornecedor novo que ainda não tem cor definida. */
-const TAG_FORNECEDOR: Record<string, string> = {
-  KAID: "bg-[var(--tag-kaid-bg)] border-[var(--tag-kaid-border)] text-[var(--tag-kaid-ink)]",
-  AGOLD: "bg-[var(--tag-agold-bg)] border-[var(--tag-agold-border)] text-[var(--tag-agold-ink)]",
-  HREBOS: "bg-[var(--tag-hrebos-bg)] border-[var(--tag-hrebos-border)] text-[var(--tag-hrebos-ink)]",
-};
-const TAG_FORNECEDOR_PADRAO = "bg-[var(--surface-alt)] border-[var(--border)] text-[var(--ink-muted)]";
 
 type ProdutoRow = {
   id: string;
@@ -181,7 +157,7 @@ export default async function ComparadorPage({
 
   return (
     <div
-      className={`${display.variable} ${mono.variable} ${body.variable} min-h-screen w-full bg-[var(--background)]`}
+      className={`${CLASSES_FONTES} min-h-screen w-full bg-[var(--background)]`}
       style={{ ...TEMA_ESCURO, fontFamily: "var(--font-body), ui-sans-serif, system-ui, sans-serif" }}
     >
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6 sm:p-8">
@@ -372,34 +348,6 @@ export default async function ComparadorPage({
     </div>
   );
 }
-
-/** Essa tela fica sempre no tema escuro, independente da preferência do
- * sistema — pedido explícito do usuário, não segue o padrão claro/escuro
- * automático do resto do app. Mesmos valores que já estavam em
- * globals.css (bloco @media prefers-color-scheme: dark), só que forçados
- * aqui via variável CSS inline. */
-const TEMA_ESCURO = {
-  "--background": "#0a0a0a",
-  "--surface": "#221a10",
-  "--surface-alt": "#2c2115",
-  "--border": "#453423",
-  "--ink": "#f3e9d9",
-  "--ink-muted": "#b5a58c",
-  "--accent": "#e18f4e",
-  "--accent-ink": "#1a140d",
-  "--good": "#7bc98b",
-  "--good-bg": "#24352a",
-  "--good-border": "#3c5a44",
-  "--tag-kaid-bg": "#253044",
-  "--tag-kaid-border": "#3c4e6c",
-  "--tag-kaid-ink": "#b9cbe8",
-  "--tag-agold-bg": "#3a2f16",
-  "--tag-agold-border": "#5c4a20",
-  "--tag-agold-ink": "#edc978",
-  "--tag-hrebos-bg": "#33253a",
-  "--tag-hrebos-border": "#543a5c",
-  "--tag-hrebos-ink": "#dcb6e0",
-} as React.CSSProperties;
 
 function Campo({
   label,
