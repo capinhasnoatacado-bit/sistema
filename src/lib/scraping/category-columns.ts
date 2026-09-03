@@ -51,22 +51,30 @@ export function colunasDeCampos(campos: string[]): ColunaCategoria[] {
   });
 }
 
+export type DivisaoEspecificacoes = {
+  /** valor por coluna, na mesma ordem de `colunas` — `null` quando não achou nenhuma entrada correspondente. */
+  porColuna: (string | null)[];
+  /** entradas de `especificacoes` que não bateram com nenhuma coluna — preservadas à parte pra não perder dado ao editar (ver ProdutosTable). */
+  resto: Record<string, string>;
+};
+
 /**
  * Pra cada coluna, acha o valor em `especificacoes`: primeiro tenta a chave
  * exata (rótulo salvo idêntico ao nome do campo), depois procura (por ordem
  * de coluna, sem repetir a mesma entrada em 2 colunas) uma entrada cujo
- * rótulo bata com o alias. `null` quando nenhuma entrada corresponde.
+ * rótulo bata com o alias. O que sobra (não bateu com nenhuma coluna) volta
+ * em `resto`, sem se perder.
  */
-export function valoresDasColunas(
+export function dividirEspecificacoes(
   especificacoes: Record<string, string> | null,
   colunas: ColunaCategoria[],
-): (string | null)[] {
-  if (!especificacoes) return colunas.map(() => null);
+): DivisaoEspecificacoes {
+  if (!especificacoes) return { porColuna: colunas.map(() => null), resto: {} };
 
   const usadas = new Set<string>();
   const entradas = Object.entries(especificacoes);
 
-  return colunas.map((coluna) => {
+  const porColuna = colunas.map((coluna) => {
     if (!usadas.has(coluna.chave) && especificacoes[coluna.chave] !== undefined) {
       usadas.add(coluna.chave);
       return especificacoes[coluna.chave];
@@ -82,4 +90,19 @@ export function valoresDasColunas(
 
     return null;
   });
+
+  const resto: Record<string, string> = {};
+  for (const [label, value] of entradas) {
+    if (!usadas.has(label)) resto[label] = value;
+  }
+
+  return { porColuna, resto };
+}
+
+/** Só os valores por coluna (pra exibição) — ver `dividirEspecificacoes` quando também precisar do que sobrou. */
+export function valoresDasColunas(
+  especificacoes: Record<string, string> | null,
+  colunas: ColunaCategoria[],
+): (string | null)[] {
+  return dividirEspecificacoes(especificacoes, colunas).porColuna;
 }

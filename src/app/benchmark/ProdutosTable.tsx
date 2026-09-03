@@ -9,7 +9,7 @@ import {
   excluirProdutosBenchmarkEmLote,
 } from "./actions";
 import { AtualizarPrecosButton } from "./AtualizarPrecosButton";
-import { valoresDasColunas, type ColunaCategoria } from "@/lib/scraping/category-columns";
+import { dividirEspecificacoes, valoresDasColunas, type ColunaCategoria } from "@/lib/scraping/category-columns";
 
 export type BenchmarkProdutoRow = {
   id: string;
@@ -39,16 +39,61 @@ function especificacoesParaTexto(spec: Record<string, string> | null): string {
     .join("\n");
 }
 
-type CamposEdicao = { nome: string; codigo: string; marca: string; preco: string; especTexto: string };
+type CampoTextoEdicao = "nome" | "codigo" | "marca" | "preco" | "especTexto";
 
-function camposIniciais(produto: BenchmarkProdutoRow): CamposEdicao {
-  return {
+type CamposEdicao = {
+  nome: string;
+  codigo: string;
+  marca: string;
+  preco: string;
+  /** Valor por coluna dedicada (chave = `ColunaCategoria.chave`) — só usado quando o job tem categoria com colunas. */
+  porColuna: Record<string, string>;
+  /**
+   * Sem colunas dedicadas: especificações inteiras, no formato "Rótulo: Valor".
+   * Com colunas dedicadas: só o que "sobrou" (não bateu com nenhuma coluna) —
+   * não aparece pra editar, mas é preservado ao salvar (ver `combinarEspecificacoesTexto`).
+   */
+  especTexto: string;
+};
+
+/** Monta o estado inicial de edição, separando `especificacoes` em colunas dedicadas (se a categoria tiver) + o resto. */
+function camposIniciais(produto: BenchmarkProdutoRow, colunas: ColunaCategoria[] | null): CamposEdicao {
+  const base = {
     nome: produto.nome ?? "",
     codigo: produto.codigo ?? "",
     marca: produto.marca ?? "",
     preco: produto.preco !== null ? String(produto.preco).replace(".", ",") : "",
-    especTexto: especificacoesParaTexto(produto.especificacoes),
   };
+
+  if (!colunas) {
+    return { ...base, porColuna: {}, especTexto: especificacoesParaTexto(produto.especificacoes) };
+  }
+
+  const { porColuna: valoresPorColuna, resto } = dividirEspecificacoes(produto.especificacoes, colunas);
+  const porColuna: Record<string, string> = {};
+  colunas.forEach((coluna, indice) => {
+    porColuna[coluna.chave] = valoresPorColuna[indice] ?? "";
+  });
+
+  return { ...base, porColuna, especTexto: especificacoesParaTexto(resto) };
+}
+
+/** Reconstrói o texto "Rótulo: Valor" (formato que a action já entende) a partir das colunas dedicadas + o resto preservado. */
+function combinarEspecificacoesTexto(
+  porColuna: Record<string, string>,
+  colunas: ColunaCategoria[] | null,
+  especTextoResto: string,
+): string {
+  const linhasColunas = colunas
+    ? colunas
+        .map((coluna) => {
+          const valor = (porColuna[coluna.chave] ?? "").trim();
+          return valor ? `${coluna.chave}: ${valor}` : null;
+        })
+        .filter((linha): linha is string => linha !== null)
+    : [];
+
+  return [...linhasColunas, especTextoResto.trim()].filter(Boolean).join("\n");
 }
 
 /**
@@ -83,7 +128,7 @@ export function ProdutosTable({
 
   function iniciarEdicaoTotal() {
     const inicial: Record<string, CamposEdicao> = {};
-    for (const produto of produtos) inicial[produto.id] = camposIniciais(produto);
+    for (const produto of produtos) inicial[produto.id] = camposIniciais(produto, colunasEfetivas);
     setEdicoes(inicial);
     setSelecionados(new Set());
     setErroTudo(null);
@@ -98,8 +143,15 @@ export function ProdutosTable({
     setErroTudo(null);
   }
 
-  function atualizarCampo(produtoId: string, campo: keyof CamposEdicao, valor: string) {
+  function atualizarCampo(produtoId: string, campo: CampoTextoEdicao, valor: string) {
     setEdicoes((atual) => ({ ...atual, [produtoId]: { ...atual[produtoId], [campo]: valor } }));
+  }
+
+  function atualizarCampoColuna(produtoId: string, chaveColuna: string, valor: string) {
+    setEdicoes((atual) => ({
+      ...atual,
+      [produtoId]: { ...atual[produtoId], porColuna: { ...atual[produtoId].porColuna, [chaveColuna]: valor } },
+    }));
   }
 
   function alternarSelecionado(produtoId: string) {
@@ -136,14 +188,14 @@ export function ProdutosTable({
     setErroTudo(null);
     startTransitionTudo(async () => {
       const itens = produtos.map((produto) => {
-        const campos = edicoes[produto.id] ?? camposIniciais(produto);
+        const campos = edicoes[produto.id] ?? camposIniciais(produto, colunasEfetivas);
         return {
           produtoId: produto.id,
           nome: campos.nome,
           codigo: campos.codigo,
           marca: campos.marca,
           preco: campos.preco,
-          especificacoesTexto: campos.especTexto,
+          especificacoesTexto: combinarEspecificacoesTexto(campos.porColuna, colunasEfetivas, campos.especTexto),
         };
       });
 
@@ -242,18 +294,19 @@ export function ProdutosTable({
                 <LinhaEdicaoEmLote
                   key={produto.id}
                   url={produto.url_produto}
-                  valores={edicoes[produto.id] ?? camposIniciais(produto)}
+                  colunas={colunasEfetivas}
+                  valores={edicoes[produto.id] ?? camposIniciais(produto, colunasEfetivas)}
                   onChange={(campo, valor) => atualizarCampo(produto.id, campo, valor)}
+                  onChangeColuna={(chave, valor) => atualizarCampoColuna(produto.id, chave, valor)}
                   selecionado={selecionados.has(produto.id)}
                   onToggleSelecionado={() => alternarSelecionado(produto.id)}
-                  numeroColunasEspecificacoes={numeroColunasEspecificacoes}
                 />
               ) : editandoId === produto.id ? (
                 <LinhaEdicao
                   key={produto.id}
                   produto={produto}
+                  colunas={colunasEfetivas}
                   onCancelar={() => setEditandoId(null)}
-                  numeroColunasEspecificacoes={numeroColunasEspecificacoes}
                 />
               ) : (
                 <LinhaVisualizacao
@@ -365,24 +418,72 @@ function LinhaVisualizacao({
 const CAMPO_CLASS =
   "h-8 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 font-[family-name:var(--font-body)] text-[13px] text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]";
 
+/** As colunas dedicadas (Cor, Comprimento…) ou, sem categoria com campos, o textarea genérico "Rótulo: Valor" — usado tanto na edição de 1 linha quanto na em lote. */
+function CelulasDeEspecificacoes({
+  colunas,
+  porColuna,
+  onChangeColuna,
+  especTexto,
+  onChangeEspecTexto,
+}: {
+  colunas: ColunaCategoria[] | null;
+  porColuna: Record<string, string>;
+  onChangeColuna: (chave: string, valor: string) => void;
+  especTexto: string;
+  onChangeEspecTexto: (valor: string) => void;
+}) {
+  if (colunas) {
+    return (
+      <>
+        {colunas.map((coluna) => (
+          <td key={coluna.chave} className="px-3.5 py-2.5">
+            <input
+              value={porColuna[coluna.chave] ?? ""}
+              onChange={(e) => onChangeColuna(coluna.chave, e.target.value)}
+              className={CAMPO_CLASS}
+            />
+          </td>
+        ))}
+      </>
+    );
+  }
+
+  return (
+    <td className="px-3.5 py-2.5">
+      <textarea
+        rows={2}
+        value={especTexto}
+        onChange={(e) => onChangeEspecTexto(e.target.value)}
+        placeholder={"Rótulo: Valor"}
+        className={`${CAMPO_CLASS} h-auto resize-y py-1.5`}
+      />
+    </td>
+  );
+}
+
 function LinhaEdicao({
   produto,
+  colunas,
   onCancelar,
-  numeroColunasEspecificacoes,
 }: {
   produto: BenchmarkProdutoRow;
+  colunas: ColunaCategoria[] | null;
   onCancelar: () => void;
-  numeroColunasEspecificacoes: number;
 }) {
-  const camposIniciaisProduto = camposIniciais(produto);
+  const camposIniciaisProduto = camposIniciais(produto, colunas);
   const [nome, setNome] = useState(camposIniciaisProduto.nome);
   const [codigo, setCodigo] = useState(camposIniciaisProduto.codigo);
   const [marca, setMarca] = useState(camposIniciaisProduto.marca);
   const [preco, setPreco] = useState(camposIniciaisProduto.preco);
+  const [porColuna, setPorColuna] = useState(camposIniciaisProduto.porColuna);
   const [especTexto, setEspecTexto] = useState(camposIniciaisProduto.especTexto);
   const [erro, setErro] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  function atualizarColuna(chave: string, valor: string) {
+    setPorColuna((atual) => ({ ...atual, [chave]: valor }));
+  }
 
   function salvar() {
     setErro(null);
@@ -394,7 +495,7 @@ function LinhaEdicao({
           codigo,
           marca,
           preco,
-          especificacoesTexto: especTexto,
+          especificacoesTexto: combinarEspecificacoesTexto(porColuna, colunas, especTexto),
         });
         router.refresh();
         onCancelar(); // fecha o modo de edição — os dados novos vêm do refresh
@@ -423,15 +524,13 @@ function LinhaEdicao({
           className={`${CAMPO_CLASS} text-right tabular-nums`}
         />
       </td>
-      <td className="px-3.5 py-2.5" colSpan={numeroColunasEspecificacoes}>
-        <textarea
-          rows={2}
-          value={especTexto}
-          onChange={(e) => setEspecTexto(e.target.value)}
-          placeholder={"Rótulo: Valor"}
-          className={`${CAMPO_CLASS} h-auto resize-y py-1.5`}
-        />
-      </td>
+      <CelulasDeEspecificacoes
+        colunas={colunas}
+        porColuna={porColuna}
+        onChangeColuna={atualizarColuna}
+        especTexto={especTexto}
+        onChangeEspecTexto={setEspecTexto}
+      />
       <td className="px-3.5 py-2.5">
         <div className="flex flex-col gap-1">
           <button
@@ -464,18 +563,20 @@ function LinhaEdicao({
  */
 function LinhaEdicaoEmLote({
   url,
+  colunas,
   valores,
   onChange,
+  onChangeColuna,
   selecionado,
   onToggleSelecionado,
-  numeroColunasEspecificacoes,
 }: {
   url: string;
+  colunas: ColunaCategoria[] | null;
   valores: CamposEdicao;
-  onChange: (campo: keyof CamposEdicao, valor: string) => void;
+  onChange: (campo: CampoTextoEdicao, valor: string) => void;
+  onChangeColuna: (chave: string, valor: string) => void;
   selecionado: boolean;
   onToggleSelecionado: () => void;
-  numeroColunasEspecificacoes: number;
 }) {
   return (
     <tr
@@ -508,15 +609,13 @@ function LinhaEdicaoEmLote({
           className={`${CAMPO_CLASS} text-right tabular-nums`}
         />
       </td>
-      <td className="px-3.5 py-2.5" colSpan={numeroColunasEspecificacoes}>
-        <textarea
-          rows={2}
-          value={valores.especTexto}
-          onChange={(e) => onChange("especTexto", e.target.value)}
-          placeholder={"Rótulo: Valor"}
-          className={`${CAMPO_CLASS} h-auto resize-y py-1.5`}
-        />
-      </td>
+      <CelulasDeEspecificacoes
+        colunas={colunas}
+        porColuna={valores.porColuna}
+        onChangeColuna={onChangeColuna}
+        especTexto={valores.especTexto}
+        onChangeEspecTexto={(valor) => onChange("especTexto", valor)}
+      />
       <td className="px-3.5 py-2.5 text-right">
         <a
           href={url}
