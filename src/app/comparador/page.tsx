@@ -178,10 +178,11 @@ export default async function ComparadorPage({
   ];
 
   return (
-    <main
-      className={`${display.variable} ${mono.variable} ${body.variable} mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 bg-[var(--background)] p-6 sm:p-8`}
-      style={{ fontFamily: "var(--font-body), ui-sans-serif, system-ui, sans-serif" }}
+    <div
+      className={`${display.variable} ${mono.variable} ${body.variable} min-h-screen w-full bg-[var(--background)]`}
+      style={{ ...TEMA_ESCURO, fontFamily: "var(--font-body), ui-sans-serif, system-ui, sans-serif" }}
     >
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6 sm:p-8">
       <header className="flex flex-col gap-1">
         <p className="font-[family-name:var(--font-data-mono)] text-[11px] font-medium tracking-[0.14em] text-[var(--accent)] uppercase">
           Capi Atacado · Reposição de estoque
@@ -352,8 +353,37 @@ export default async function ComparadorPage({
         {todosOsCabos.length} cabos cadastrados — {fornecedores.join(" · ")}
       </footer>
     </main>
+    </div>
   );
 }
+
+/** Essa tela fica sempre no tema escuro, independente da preferência do
+ * sistema — pedido explícito do usuário, não segue o padrão claro/escuro
+ * automático do resto do app. Mesmos valores que já estavam em
+ * globals.css (bloco @media prefers-color-scheme: dark), só que forçados
+ * aqui via variável CSS inline. */
+const TEMA_ESCURO = {
+  "--background": "#0a0a0a",
+  "--surface": "#221a10",
+  "--surface-alt": "#2c2115",
+  "--border": "#453423",
+  "--ink": "#f3e9d9",
+  "--ink-muted": "#b5a58c",
+  "--accent": "#e18f4e",
+  "--accent-ink": "#1a140d",
+  "--good": "#7bc98b",
+  "--good-bg": "#24352a",
+  "--good-border": "#3c5a44",
+  "--tag-kaid-bg": "#253044",
+  "--tag-kaid-border": "#3c4e6c",
+  "--tag-kaid-ink": "#b9cbe8",
+  "--tag-agold-bg": "#3a2f16",
+  "--tag-agold-border": "#5c4a20",
+  "--tag-agold-ink": "#edc978",
+  "--tag-hrebos-bg": "#33253a",
+  "--tag-hrebos-border": "#543a5c",
+  "--tag-hrebos-ink": "#dcb6e0",
+} as React.CSSProperties;
 
 function Campo({
   label,
