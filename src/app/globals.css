@@ -17,6 +17,9 @@
   --good: #3f7d4f;
   --good-bg: #e3efe1;
   --good-border: #b9d6b6;
+  --bad: #b23b3b;
+  --bad-bg: #f6e2e0;
+  --bad-border: #e0b3ae;
 
   --tag-kaid-bg: #e4eaf2;
   --tag-kaid-border: #b9c8dd;
@@ -51,6 +54,9 @@
     --good: #7bc98b;
     --good-bg: #24352a;
     --good-border: #3c5a44;
+    --bad: #e08585;
+    --bad-bg: #3a2020;
+    --bad-border: #5c3535;
 
     --tag-kaid-bg: #253044;
     --tag-kaid-border: #3c4e6c;

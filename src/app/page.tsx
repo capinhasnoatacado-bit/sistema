@@ -66,12 +66,20 @@ export default async function Home() {
         )}
       </div>
 
-      <a
-        href="/comparador"
-        className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
-      >
-        Comparador de cabos
-      </a>
+      <div className="flex gap-3">
+        <a
+          href="/comparador"
+          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
+        >
+          Comparador de cabos
+        </a>
+        <a
+          href="/benchmark"
+          className="rounded-md border border-black/10 px-4 py-2 text-sm font-medium text-zinc-900 dark:border-white/15 dark:text-white"
+        >
+          Benchmark de preços
+        </a>
+      </div>
     </main>
   );
 }
