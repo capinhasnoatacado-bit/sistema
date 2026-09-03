@@ -1,7 +1,24 @@
+import { Barlow_Condensed, IBM_Plex_Mono, Public_Sans } from "next/font/google";
 import { createClient } from "@/lib/supabase/server";
 
 // searchParams é request-time (não dá pra pré-renderizar essa página).
 export const dynamic = "force-dynamic";
+
+const display = Barlow_Condensed({
+  variable: "--font-display",
+  weight: ["600", "700"],
+  subsets: ["latin"],
+});
+const mono = IBM_Plex_Mono({
+  variable: "--font-data-mono",
+  weight: ["400", "500", "600"],
+  subsets: ["latin"],
+});
+const body = Public_Sans({
+  variable: "--font-body",
+  weight: ["400", "500", "600"],
+  subsets: ["latin"],
+});
 
 type Especificacoes = {
   conector_origem?: string;
@@ -19,6 +36,15 @@ type Especificacoes = {
 /** Opções fixas do filtro de cor — não dependem do que está cadastrado,
  * são a classificação básica que a gente decidiu usar. */
 const CORES_FILTRO = ["Preto", "Branco", "Colorido"] as const;
+
+/** Uma cor de tag por fornecedor, pra escanear a coluna rápido. Cai num
+ * neutro se aparecer um fornecedor novo que ainda não tem cor definida. */
+const TAG_FORNECEDOR: Record<string, string> = {
+  KAID: "bg-[var(--tag-kaid-bg)] border-[var(--tag-kaid-border)] text-[var(--tag-kaid-ink)]",
+  AGOLD: "bg-[var(--tag-agold-bg)] border-[var(--tag-agold-border)] text-[var(--tag-agold-ink)]",
+  HREBOS: "bg-[var(--tag-hrebos-bg)] border-[var(--tag-hrebos-border)] text-[var(--tag-hrebos-ink)]",
+};
+const TAG_FORNECEDOR_PADRAO = "bg-[var(--surface-alt)] border-[var(--border)] text-[var(--ink-muted)]";
 
 type ProdutoRow = {
   id: string;
@@ -143,18 +169,47 @@ export default async function ComparadorPage({
   const fornecedores = opcoesFornecedor(todosOsCabos);
 
   const menorPreco = resultado.length > 0 ? resultado[0].preco_unitario : null;
+  const precos = todosOsCabos.map((p) => p.preco_unitario);
+  const stats = [
+    { label: "Cabos cadastrados", value: String(todosOsCabos.length) },
+    { label: "Fornecedores", value: String(fornecedores.length) },
+    { label: "Menor preço", value: precos.length ? currency.format(Math.min(...precos)) : "—" },
+    { label: "Maior preço", value: precos.length ? currency.format(Math.max(...precos)) : "—" },
+  ];
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6 sm:p-8">
+    <main
+      className={`${display.variable} ${mono.variable} ${body.variable} mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 bg-[var(--background)] p-6 sm:p-8`}
+      style={{ fontFamily: "var(--font-body), ui-sans-serif, system-ui, sans-serif" }}
+    >
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">Comparador de cabos</h1>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          Compare preço por peça entre fornecedores. Use os filtros pra achar cabos equivalentes —
-          a equivalência é escolhida por você, não é automática.
+        <p className="font-[family-name:var(--font-data-mono)] text-[11px] font-medium tracking-[0.14em] text-[var(--accent)] uppercase">
+          Capi Atacado · Reposição de estoque
+        </p>
+        <h1 className="text-balance font-[family-name:var(--font-display)] text-4xl leading-[1.02] font-bold tracking-tight text-[var(--ink)]">
+          Comparador de Cabos
+        </h1>
+        <p className="max-w-[62ch] text-[15px] text-[var(--ink-muted)]">
+          Mesmo cabo, fornecedor diferente, preço diferente. Filtre por conector, comprimento, cor
+          e fornecedor pra achar o mais barato — sempre em preço por peça. A equivalência é
+          escolhida por você, não é automática.
         </p>
       </header>
 
-      <form className="flex flex-wrap items-end gap-4 rounded-lg border border-black/10 p-4 dark:border-white/15">
+      <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--border)] sm:grid-cols-4">
+        {stats.map((s) => (
+          <div key={s.label} className="flex flex-col gap-1 bg-[var(--surface)] px-4 py-3.5">
+            <span className="font-[family-name:var(--font-data-mono)] text-[10.5px] tracking-[0.08em] text-[var(--ink-muted)] uppercase">
+              {s.label}
+            </span>
+            <span className="font-[family-name:var(--font-display)] text-[26px] font-bold tabular-nums text-[var(--ink)]">
+              {s.value}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <form className="flex flex-wrap items-end gap-4 rounded-[10px] border border-[var(--border)] bg-[var(--surface)] p-4">
         <Campo label="Conector de origem">
           <Select name="origem" valorAtual={filtros.origem} opcoes={origens} />
         </Campo>
@@ -180,41 +235,49 @@ export default async function ComparadorPage({
           <Select name="fornecedor" valorAtual={filtros.fornecedor} opcoes={fornecedores} />
         </Campo>
 
-        <Campo label="Buscar (potência, material...)">
+        <Campo label="Buscar (potência, material...)" className="flex-1">
           <input
             type="text"
             name="busca"
             defaultValue={filtros.busca}
             placeholder="ex: PD, trançado, LED"
-            className="h-9 rounded-md border border-black/15 bg-transparent px-3 text-sm dark:border-white/20"
+            className="h-9 min-w-[220px] rounded-md border border-[var(--border)] bg-[var(--background)] px-3 text-[13.5px] text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
           />
         </Campo>
 
         <div className="flex gap-2">
           <button
             type="submit"
-            className="h-9 rounded-md bg-zinc-900 px-4 text-sm font-medium text-white dark:bg-white dark:text-zinc-900"
+            className="h-9 rounded-md bg-[var(--accent)] px-4 text-[13px] font-semibold text-[var(--accent-ink)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
           >
             Filtrar
           </button>
           <a
             href="/comparador"
-            className="flex h-9 items-center rounded-md border border-black/15 px-4 text-sm dark:border-white/20"
+            className="flex h-9 items-center rounded-md border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--ink-muted)] hover:text-[var(--ink)]"
           >
             Limpar
           </a>
         </div>
       </form>
 
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        {resultado.length} {resultado.length === 1 ? "cabo encontrado" : "cabos encontrados"}
-        {todosOsCabos.length !== resultado.length ? ` de ${todosOsCabos.length} cadastrados` : ""}.
+      <p className="text-[13px] text-[var(--ink-muted)]">
+        <strong className="tabular-nums text-[var(--ink)]">{resultado.length}</strong>{" "}
+        {resultado.length === 1 ? "cabo encontrado" : "cabos encontrados"}
+        {todosOsCabos.length !== resultado.length ? (
+          <>
+            {" "}
+            de <strong className="tabular-nums text-[var(--ink)]">{todosOsCabos.length}</strong>{" "}
+            cadastrados
+          </>
+        ) : null}
+        .
       </p>
 
-      <div className="overflow-x-auto rounded-lg border border-black/10 dark:border-white/15">
-        <table className="w-full min-w-[840px] border-collapse text-sm">
+      <div className="max-h-[72vh] overflow-auto rounded-[10px] border border-[var(--border)] bg-[var(--surface)]">
+        <table className="w-full min-w-[900px] border-collapse text-[13.5px]">
           <thead>
-            <tr className="border-b border-black/10 bg-black/[0.03] text-left dark:border-white/15 dark:bg-white/[0.04]">
+            <tr>
               <Th>Fornecedor</Th>
               <Th>Código</Th>
               <Th>Conector</Th>
@@ -230,26 +293,42 @@ export default async function ComparadorPage({
             {resultado.map((produto) => {
               const spec = produto.especificacoes ?? {};
               const ehMaisBarato = produto.preco_unitario === menorPreco;
+              const nomeFornecedor = produto.fornecedores?.nome ?? "";
 
               return (
                 <tr
                   key={produto.id}
-                  className={`border-b border-black/5 last:border-0 dark:border-white/10 ${
-                    ehMaisBarato ? "bg-green-50 dark:bg-green-900/20" : ""
+                  className={`border-b border-[var(--border)]/60 last:border-0 hover:bg-[var(--surface-alt)] ${
+                    ehMaisBarato ? "bg-[var(--good-bg)] hover:bg-[var(--good-bg)]" : ""
                   }`}
                 >
-                  <Td>{produto.fornecedores?.nome ?? "—"}</Td>
-                  <Td className="font-mono text-xs">{produto.codigo ?? "—"}</Td>
+                  <Td>
+                    <span
+                      className={`inline-flex h-[22px] items-center rounded-full border px-2.5 text-[11.5px] font-semibold whitespace-nowrap ${
+                        TAG_FORNECEDOR[nomeFornecedor] ?? TAG_FORNECEDOR_PADRAO
+                      }`}
+                    >
+                      {nomeFornecedor || "—"}
+                    </span>
+                  </Td>
+                  <Td className="font-[family-name:var(--font-data-mono)] text-xs text-[var(--ink-muted)]">
+                    {produto.codigo ?? "—"}
+                  </Td>
                   <Td>
                     {spec.conector_origem ?? "—"} → {spec.conector_destino ?? "—"}
                   </Td>
                   <Td>{formatComprimento(spec.comprimento_m)}</Td>
                   <Td>{spec.cor ?? "—"}</Td>
                   <Td>{spec.amperagem ?? "—"}</Td>
-                  <Td className="max-w-[220px] truncate" title={spec.material}>
+                  <Td className="max-w-[220px] truncate text-[var(--ink-muted)]" title={spec.material}>
                     {spec.material ?? "—"}
                   </Td>
-                  <Td align="right" className={ehMaisBarato ? "font-semibold" : undefined}>
+                  <Td
+                    align="right"
+                    className={`font-[family-name:var(--font-data-mono)] ${
+                      ehMaisBarato ? "font-semibold text-[var(--good)]" : ""
+                    }`}
+                  >
                     {currency.format(produto.preco_unitario)}
                     {ehMaisBarato ? " 🏆" : ""}
                   </Td>
@@ -260,7 +339,7 @@ export default async function ComparadorPage({
 
             {resultado.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-6 text-center text-zinc-500 dark:text-zinc-400">
+                <td colSpan={9} className="p-10 text-center text-[var(--ink-muted)]">
                   Nenhum cabo encontrado com esses filtros.
                 </td>
               </tr>
@@ -268,13 +347,27 @@ export default async function ComparadorPage({
           </tbody>
         </table>
       </div>
+
+      <footer className="pt-1 text-center text-xs text-[var(--ink-muted)]">
+        {todosOsCabos.length} cabos cadastrados — {fornecedores.join(" · ")}
+      </footer>
     </main>
   );
 }
 
-function Campo({ label, children }: { label: string; children: React.ReactNode }) {
+function Campo({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <label className="flex flex-col gap-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+    <label
+      className={`flex flex-col gap-1.5 font-[family-name:var(--font-data-mono)] text-[10.5px] font-medium tracking-[0.06em] text-[var(--ink-muted)] uppercase ${className ?? ""}`}
+    >
       {label}
       {children}
     </label>
@@ -296,7 +389,7 @@ function Select({
     <select
       name={name}
       defaultValue={valorAtual}
-      className="h-9 rounded-md border border-black/15 bg-transparent px-2 text-sm dark:border-white/20"
+      className="h-9 min-w-[150px] rounded-md border border-[var(--border)] bg-[var(--background)] px-2 font-[family-name:var(--font-body)] text-[13.5px] font-normal tracking-normal text-[var(--ink)] normal-case focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
     >
       <option value="">Todos</option>
       {opcoes.map((opcao) => (
@@ -310,7 +403,11 @@ function Select({
 
 function Th({ children, align = "left" }: { children: React.ReactNode; align?: "left" | "right" }) {
   return (
-    <th className={`px-3 py-2 font-medium ${align === "right" ? "text-right" : "text-left"}`}>
+    <th
+      className={`sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--surface-alt)] px-3.5 py-2.5 font-[family-name:var(--font-data-mono)] text-[10.5px] font-medium tracking-[0.06em] whitespace-nowrap text-[var(--ink-muted)] uppercase ${
+        align === "right" ? "text-right" : "text-left"
+      }`}
+    >
       {children}
     </th>
   );
@@ -330,7 +427,7 @@ function Td({
   return (
     <td
       title={title}
-      className={`px-3 py-2 ${align === "right" ? "text-right" : "text-left"} ${className ?? ""}`}
+      className={`px-3.5 py-2.5 text-[var(--ink)] ${align === "right" ? "text-right tabular-nums" : "text-left"} ${className ?? ""}`}
     >
       {children}
     </td>

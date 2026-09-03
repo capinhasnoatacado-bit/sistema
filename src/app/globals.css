@@ -3,6 +3,30 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* Paleta "catálogo de cabos" — usada no /comparador. Fundo neutro
+     quente (não branco puro) com um acento cobre, remetendo ao fio de
+     cobre dentro dos próprios cabos que a tela compara. */
+  --surface: #ffffff;
+  --surface-alt: #efe8db;
+  --border: #ddd2bd;
+  --ink: #23180f;
+  --ink-muted: #7a6c58;
+  --accent: #b1551f;
+  --accent-ink: #fffaf3;
+  --good: #3f7d4f;
+  --good-bg: #e3efe1;
+  --good-border: #b9d6b6;
+
+  --tag-kaid-bg: #e4eaf2;
+  --tag-kaid-border: #b9c8dd;
+  --tag-kaid-ink: #2b3f5c;
+  --tag-agold-bg: #f8ecd2;
+  --tag-agold-border: #e2c485;
+  --tag-agold-ink: #6b4c11;
+  --tag-hrebos-bg: #efe3f0;
+  --tag-hrebos-border: #cfa9d4;
+  --tag-hrebos-ink: #5a2f60;
 }
 
 @theme inline {
@@ -16,6 +40,27 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+
+    --surface: #221a10;
+    --surface-alt: #2c2115;
+    --border: #453423;
+    --ink: #f3e9d9;
+    --ink-muted: #b5a58c;
+    --accent: #e18f4e;
+    --accent-ink: #1a140d;
+    --good: #7bc98b;
+    --good-bg: #24352a;
+    --good-border: #3c5a44;
+
+    --tag-kaid-bg: #253044;
+    --tag-kaid-border: #3c4e6c;
+    --tag-kaid-ink: #b9cbe8;
+    --tag-agold-bg: #3a2f16;
+    --tag-agold-border: #5c4a20;
+    --tag-agold-ink: #edc978;
+    --tag-hrebos-bg: #33253a;
+    --tag-hrebos-border: #543a5c;
+    --tag-hrebos-ink: #dcb6e0;
   }
 }
 
