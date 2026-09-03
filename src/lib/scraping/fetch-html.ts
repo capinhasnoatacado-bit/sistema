@@ -46,7 +46,7 @@ export async function fetchHtml(url: string, timeoutMs = 15000): Promise<string>
       );
     }
 
-    return await response.text();
+    return await decodeBody(response);
   } catch (error) {
     if (error instanceof FetchHtmlError) throw error;
     if (error instanceof Error && error.name === "AbortError") {
@@ -57,4 +57,37 @@ export async function fetchHtml(url: string, timeoutMs = 15000): Promise<string>
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * `response.text()` só olha o charset do header HTTP `Content-Type`,
+ * caindo pra UTF-8 quando ele não vem declarado — bastante comum em sites
+ * mais antigos, que declaram o charset só via `<meta charset>` dentro do
+ * próprio HTML. Decodificar como UTF-8 nesse caso corrompe acentos (ex:
+ * "Cerâmica" virando "Cer�mica"), então aqui a gente lê os bytes crus e
+ * decodifica com o charset certo, onde quer que ele esteja declarado.
+ */
+async function decodeBody(response: Response): Promise<string> {
+  const buffer = await response.arrayBuffer();
+  const charset = detectCharset(response.headers.get("content-type") ?? "", buffer);
+
+  try {
+    return new TextDecoder(charset).decode(buffer);
+  } catch {
+    return new TextDecoder("utf-8").decode(buffer); // charset não reconhecido — utf-8 como fallback seguro
+  }
+}
+
+function detectCharset(contentType: string, buffer: ArrayBuffer): string {
+  const doHeader = contentType.match(/charset=([^;]+)/i);
+  if (doHeader) return doHeader[1].trim().toLowerCase();
+
+  // Sem charset no header — procura a declaração <meta charset> no HTML.
+  // A declaração em si é sempre ASCII, então dá pra ler os primeiros bytes
+  // com um decoder que nunca falha (windows-1252) antes de saber o charset
+  // de verdade da página inteira.
+  const preview = new TextDecoder("windows-1252").decode(buffer.slice(0, 2048));
+  const metaCharset =
+    preview.match(/<meta[^>]+charset=["']?([\w-]+)/i) ?? preview.match(/charset=([\w-]+)/i);
+  return metaCharset ? metaCharset[1].trim().toLowerCase() : "utf-8";
 }
