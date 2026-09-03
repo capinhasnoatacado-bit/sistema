@@ -17,13 +17,15 @@ import type { ExtractedProduct } from "./types";
  *   4. Varredura genérica de texto em padrão "Rótulo: Valor" — último
  *      recurso, mais ruidoso, só usada se as camadas acima acharam pouco.
  *
- * `codigo` (pra cruzar com `produtos.codigo` do catálogo próprio) compara o
- * candidato do JSON-LD (model/mpn/sku, nessa ordem) com o achado num rótulo
- * tipo "Código"/"SKU"/"Modelo" nas especificações da página, e fica com o
- * que NÃO for só dígitos — em várias plataformas de e-commerce, um
- * sku/model só numérico é o id interno de estoque da loja (ex: "9098"),
- * não o código real do produto (que quase sempre tem letra, ex: "CB143").
- * Um valor só numérico só é usado se não sobrar nenhum candidato melhor.
+ * `codigo` (pra cruzar com `produtos.codigo` do catálogo próprio) compara 3
+ * candidatos — JSON-LD (model/mpn/sku, nessa ordem), um rótulo tipo
+ * "Código"/"SKU"/"Modelo" nas especificações da página, e o último token do
+ * nome do produto (comum em catálogo de atacado terminar em "<Marca>
+ * <Código>") — e fica com o primeiro que NÃO for só dígitos: em várias
+ * plataformas de e-commerce, um sku/model só numérico é o id interno de
+ * estoque da loja (ex: "9098"), não o código real do produto (que quase
+ * sempre tem letra, ex: "CB143"). Um valor só numérico só é usado se não
+ * sobrar nenhum candidato melhor.
  *
  * Não há garantia de 100% de acerto em qualquer site — sites sem dado
  * estruturado e com HTML muito específico podem sair com campos em branco.
@@ -46,7 +48,11 @@ export function extractProduct(html: string, url: string): ExtractedProduct {
 
   const nome = fromJsonLd.nome ?? fromMeta.nome ?? extractH1($);
   const marca = fromJsonLd.marca ?? fromMeta.marca ?? especificacoes["Marca"] ?? null;
-  const codigo = melhorCodigo(fromJsonLd.codigo, findCodigoEmEspecificacoes(especificacoes));
+  const codigo = melhorCodigo(
+    fromJsonLd.codigo,
+    findCodigoEmEspecificacoes(especificacoes),
+    extractCodigoDoNome(nome),
+  );
   const preco = fromJsonLd.preco ?? fromMeta.preco ?? extractPriceFromDom($);
   const imagemUrl = resolveUrl(fromJsonLd.imagemUrl ?? fromMeta.imagemUrl ?? extractImageFromDom($), url);
 
@@ -83,6 +89,26 @@ function melhorCodigo(...candidatos: Array<string | null>): string | null {
   const naoNumerico = candidatos.find((c) => c && !CODIGO_PURAMENTE_NUMERICO.test(c));
   if (naoNumerico) return naoNumerico;
   return candidatos.find((c) => c) ?? null;
+}
+
+// Token que parece mesmo um código de produto: mistura letra e número (e
+// opcionalmente hífen), tamanho curto — evita pegar palavra solta tipo
+// "Branco" ou "iPhone" (sem dígito) do fim do nome.
+const CODIGO_LIKE_TOKEN = /^(?=[A-Za-z0-9-]{2,15}$)(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9-]+$/;
+
+/**
+ * Último recurso pra achar o código: em catálogo de atacado é comum o nome
+ * do produto terminar em "<descrição> <Marca> <Código>" (ex: "Cabo Turbo
+ * ... Hrebos CB-320i"). Só usa o último "token" do nome se ele parecer
+ * mesmo um código — não é garantido em qualquer site, mas como é o último
+ * candidato tentado (depois de JSON-LD e das especificações da página),
+ * só entra em jogo quando não sobrou nada melhor.
+ */
+function extractCodigoDoNome(nome: string | null): string | null {
+  if (!nome) return null;
+  const tokens = nome.trim().split(/\s+/);
+  const ultimo = tokens[tokens.length - 1]?.replace(/[.,;:]+$/, "");
+  return ultimo && CODIGO_LIKE_TOKEN.test(ultimo) ? ultimo : null;
 }
 
 // ---------------------------------------------------------------------------
