@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { atualizarProdutoBenchmark } from "./actions";
+import { atualizarProdutoBenchmark, excluirProdutoBenchmark } from "./actions";
 
 export type BenchmarkProdutoRow = {
   id: string;
@@ -72,6 +72,17 @@ export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] })
 }
 
 function LinhaVisualizacao({ produto, onEditar }: { produto: BenchmarkProdutoRow; onEditar: () => void }) {
+  const [excluindo, startTransition] = useTransition();
+  const router = useRouter();
+
+  function excluir() {
+    if (!confirm(`Excluir "${produto.nome ?? "esse produto"}" da lista?`)) return;
+    startTransition(async () => {
+      await excluirProdutoBenchmark(produto.id);
+      router.refresh();
+    });
+  }
+
   return (
     <tr className="border-b border-[var(--border)]/60 last:border-0 hover:bg-[var(--surface-alt)]">
       <Td>
@@ -95,15 +106,27 @@ function LinhaVisualizacao({ produto, onEditar }: { produto: BenchmarkProdutoRow
         {formatEspecificacoes(produto.especificacoes) || "—"}
       </Td>
       <Td align="right">
-        <button
-          type="button"
-          onClick={onEditar}
-          aria-label="Editar produto"
-          title="Editar produto"
-          className="rounded-md p-1.5 text-[var(--ink-muted)] hover:bg-[var(--surface-alt)] hover:text-[var(--accent)]"
-        >
-          ✏️
-        </button>
+        <div className="flex items-center justify-end gap-1">
+          <button
+            type="button"
+            onClick={onEditar}
+            aria-label="Editar produto"
+            title="Editar produto"
+            className="rounded-md p-1.5 text-[var(--ink-muted)] hover:bg-[var(--surface-alt)] hover:text-[var(--accent)]"
+          >
+            ✏️
+          </button>
+          <button
+            type="button"
+            onClick={excluir}
+            disabled={excluindo}
+            aria-label="Excluir produto"
+            title="Excluir produto"
+            className="rounded-md p-1.5 text-[var(--ink-muted)] hover:bg-[var(--bad-bg)] hover:text-[var(--bad)] disabled:opacity-50"
+          >
+            🗑️
+          </button>
+        </div>
       </Td>
     </tr>
   );

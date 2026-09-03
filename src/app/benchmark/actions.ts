@@ -88,6 +88,36 @@ export async function atualizarProdutoBenchmark(input: AtualizarProdutoInput): P
   }
 }
 
+/** Exclui só esse produto (mantém o resto do job) e ajusta o contador de "importados" do job pra continuar batendo com o que realmente sobrou. */
+export async function excluirProdutoBenchmark(produtoId: string): Promise<void> {
+  const supabase = await createClient();
+
+  const { data: produto, error: erroSelect } = await supabase
+    .from("benchmark_produtos")
+    .select("job_id")
+    .eq("id", produtoId)
+    .single();
+
+  if (erroSelect || !produto) {
+    throw new Error(`Produto não encontrado: ${erroSelect?.message ?? produtoId}`);
+  }
+
+  const { error: erroDelete } = await supabase.from("benchmark_produtos").delete().eq("id", produtoId);
+  if (erroDelete) {
+    throw new Error(`Falha ao excluir o produto: ${erroDelete.message}`);
+  }
+
+  const jobId = produto.job_id as string;
+  const { data: job } = await supabase.from("benchmark_jobs").select("total_importado").eq("id", jobId).single();
+
+  if (job) {
+    await supabase
+      .from("benchmark_jobs")
+      .update({ total_importado: Math.max(0, (job.total_importado as number) - 1) })
+      .eq("id", jobId);
+  }
+}
+
 export type CadastroManualInput = {
   urlProduto: string;
   nome: string;
