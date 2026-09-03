@@ -17,6 +17,10 @@ import type { ExtractedProduct } from "./types";
  *   4. Varredura genérica de texto em padrão "Rótulo: Valor" — último
  *      recurso, mais ruidoso, só usada se as camadas acima acharam pouco.
  *
+ * `codigo` (pra cruzar com `produtos.codigo` do catálogo próprio) vem do
+ * sku/mpn do JSON-LD quando existe; senão cai pro primeiro rótulo tipo
+ * "Código"/"SKU"/"Modelo" achado nas especificações da página.
+ *
  * Não há garantia de 100% de acerto em qualquer site — sites sem dado
  * estruturado e com HTML muito específico podem sair com campos em branco.
  */
@@ -26,18 +30,19 @@ export function extractProduct(html: string, url: string): ExtractedProduct {
   const fromJsonLd = extractFromJsonLd($);
   const fromMeta = extractFromMeta($);
 
-  // Prioridade nos atributos: JSON-LD > blocos de especificação > varredura
-  // genérica (cada camada só preenche o que a anterior não achou).
-  let atributos: Record<string, string> = {
+  // Prioridade nas especificações: JSON-LD > blocos de especificação >
+  // varredura genérica (cada camada só preenche o que a anterior não achou).
+  let especificacoes: Record<string, string> = {
     ...extractFromSpecContainers($),
-    ...fromJsonLd.atributos,
+    ...fromJsonLd.especificacoes,
   };
-  if (Object.keys(atributos).length < 2) {
-    atributos = { ...extractFromGenericLines($), ...atributos };
+  if (Object.keys(especificacoes).length < 2) {
+    especificacoes = { ...extractFromGenericLines($), ...especificacoes };
   }
 
   const nome = fromJsonLd.nome ?? fromMeta.nome ?? extractH1($);
-  const marca = fromJsonLd.marca ?? fromMeta.marca ?? atributos["Marca"] ?? null;
+  const marca = fromJsonLd.marca ?? fromMeta.marca ?? especificacoes["Marca"] ?? null;
+  const codigo = fromJsonLd.codigo ?? findCodigoEmEspecificacoes(especificacoes);
   const preco = fromJsonLd.preco ?? fromMeta.preco ?? extractPriceFromDom($);
   const imagemUrl = resolveUrl(fromJsonLd.imagemUrl ?? fromMeta.imagemUrl ?? extractImageFromDom($), url);
 
@@ -45,10 +50,22 @@ export function extractProduct(html: string, url: string): ExtractedProduct {
     url,
     nome: nome ?? null,
     marca: marca ?? null,
+    codigo: codigo ?? null,
     preco: preco ?? null,
     imagemUrl,
-    atributos,
+    especificacoes,
   };
+}
+
+// Rótulos que costumam identificar o código/SKU do produto na própria
+// página (fallback pra quando não há sku/mpn no JSON-LD).
+const CODIGO_LABEL = /^c[oó]d(igo)?\.?$|^sku$|^refer[eê]ncia$|^modelo$/i;
+
+function findCodigoEmEspecificacoes(especificacoes: Record<string, string>): string | null {
+  for (const [label, value] of Object.entries(especificacoes)) {
+    if (CODIGO_LABEL.test(label.trim())) return value;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,13 +75,21 @@ export function extractProduct(html: string, url: string): ExtractedProduct {
 type JsonLdResult = {
   nome: string | null;
   marca: string | null;
+  codigo: string | null;
   preco: number | null;
   imagemUrl: string | null;
-  atributos: Record<string, string>;
+  especificacoes: Record<string, string>;
 };
 
 function extractFromJsonLd($: CheerioAPI): JsonLdResult {
-  const result: JsonLdResult = { nome: null, marca: null, preco: null, imagemUrl: null, atributos: {} };
+  const result: JsonLdResult = {
+    nome: null,
+    marca: null,
+    codigo: null,
+    preco: null,
+    imagemUrl: null,
+    especificacoes: {},
+  };
 
   $('script[type="application/ld+json"]').each((_, el) => {
     const raw = $(el).contents().text();
@@ -84,10 +109,8 @@ function extractFromJsonLd($: CheerioAPI): JsonLdResult {
     result.marca ??= firstString(product.brand);
     result.imagemUrl ??= firstString(product.image);
     result.preco ??= extractOfferPrice(product.offers);
-
-    const sku = firstString(product.sku ?? product.mpn);
-    if (sku) result.atributos["Modelo"] ??= sku;
-    Object.assign(result.atributos, extractAdditionalProperties(product));
+    result.codigo ??= firstString(product.sku ?? product.mpn);
+    Object.assign(result.especificacoes, extractAdditionalProperties(product));
   });
 
   return result;
@@ -158,16 +181,16 @@ function extractAdditionalProperties(node: Record<string, unknown>): Record<stri
   const raw = node.additionalProperty;
   if (!raw) return {};
   const list = Array.isArray(raw) ? raw : [raw];
-  const atributos: Record<string, string> = {};
+  const especificacoes: Record<string, string> = {};
   for (const item of list) {
     if (item && typeof item === "object") {
       const prop = item as Record<string, unknown>;
       const name = typeof prop.name === "string" ? prop.name.trim() : null;
       const value = firstString(prop.value);
-      if (name && value) atributos[name] = value;
+      if (name && value) especificacoes[name] = value;
     }
   }
-  return atributos;
+  return especificacoes;
 }
 
 /**
@@ -230,7 +253,7 @@ const SPEC_CONTAINER_SELECTOR = [
 const LABEL_VALUE_LINE = /^([A-ZÀ-Ÿ][\wÀ-ÿ'´` ]{1,40}?)\s*:\s*(.{1,120})$/u;
 
 function extractFromSpecContainers($: CheerioAPI): Record<string, string> {
-  const atributos: Record<string, string> = {};
+  const especificacoes: Record<string, string> = {};
 
   $(SPEC_CONTAINER_SELECTOR).each((_, container) => {
     const $container = $(container);
@@ -240,13 +263,13 @@ function extractFromSpecContainers($: CheerioAPI): Record<string, string> {
       if (cells.length < 2) return;
       const label = $(cells[0]).text().trim().replace(/:$/, "");
       const value = $(cells[1]).text().trim();
-      if (label && value) atributos[label] ??= value;
+      if (label && value) especificacoes[label] ??= value;
     });
 
     $container.find("dt").each((_, dt) => {
       const label = $(dt).text().trim().replace(/:$/, "");
       const value = $(dt).next("dd").text().trim();
-      if (label && value) atributos[label] ??= value;
+      if (label && value) especificacoes[label] ??= value;
     });
 
     $container.find("li, p").each((_, el) => {
@@ -254,16 +277,16 @@ function extractFromSpecContainers($: CheerioAPI): Record<string, string> {
       if (!match) return;
       const label = match[1].trim();
       const value = match[2].trim();
-      if (label && value) atributos[label] ??= value;
+      if (label && value) especificacoes[label] ??= value;
     });
   });
 
-  return atributos;
+  return especificacoes;
 }
 
 /** Último recurso: varre a página inteira à procura de linhas "Rótulo: Valor". Mais ruidoso. */
 function extractFromGenericLines($: CheerioAPI): Record<string, string> {
-  const atributos: Record<string, string> = {};
+  const especificacoes: Record<string, string> = {};
 
   $("li, p, tr, dt").each((_, el) => {
     let label = "";
@@ -285,10 +308,10 @@ function extractFromGenericLines($: CheerioAPI): Record<string, string> {
       value = match[2].trim();
     }
 
-    if (label && value && value.length <= 120) atributos[label] ??= value;
+    if (label && value && value.length <= 120) especificacoes[label] ??= value;
   });
 
-  return atributos;
+  return especificacoes;
 }
 
 // ---------------------------------------------------------------------------
