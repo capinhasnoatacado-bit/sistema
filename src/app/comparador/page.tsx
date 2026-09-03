@@ -56,6 +56,14 @@ function formatComprimento(m: number | undefined) {
   return `${m.toString().replace(".", ",")}m`;
 }
 
+// Margem de lucro alvo sobre o preço de compra (markup, não margem sobre venda)
+// — 30% significa vender por 1,30x o que pagou pro fornecedor.
+const MARGEM_LUCRO_ALVO = 0.3;
+
+function precoDeVendaSugerido(precoCompra: number): number {
+  return precoCompra * (1 + MARGEM_LUCRO_ALVO);
+}
+
 async function fetchCabos(): Promise<ProdutoRow[]> {
   const supabase = await createClient();
 
@@ -366,6 +374,7 @@ export default async function ComparadorPage({
               <Th>Potência</Th>
               <Th>Material</Th>
               <Th align="right">Preço/peça</Th>
+              <Th align="right">Venda (30%)</Th>
               <Th>Concorrentes</Th>
               <Th align="right">MOQ</Th>
               <Th align="right">Pedido</Th>
@@ -415,6 +424,9 @@ export default async function ComparadorPage({
                     {currency.format(produto.preco_unitario)}
                     {ehMaisBarato ? " 🏆" : ""}
                   </Td>
+                  <Td align="right" className="font-[family-name:var(--font-data-mono)] text-[var(--ink-muted)]">
+                    {currency.format(precoDeVendaSugerido(produto.preco_unitario))}
+                  </Td>
                   <Td className="max-w-[280px] text-[var(--ink-muted)]">
                     {concorrentes.length > 0 ? (
                       <span className="flex flex-wrap gap-x-2 gap-y-0.5">
@@ -456,7 +468,7 @@ export default async function ComparadorPage({
 
             {resultado.length === 0 && (
               <tr>
-                <td colSpan={11} className="p-10 text-center text-[var(--ink-muted)]">
+                <td colSpan={12} className="p-10 text-center text-[var(--ink-muted)]">
                   Nenhum cabo encontrado com esses filtros.
                 </td>
               </tr>
