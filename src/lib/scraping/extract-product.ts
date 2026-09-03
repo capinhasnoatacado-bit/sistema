@@ -170,6 +170,29 @@ function extractAdditionalProperties(node: Record<string, unknown>): Record<stri
   return atributos;
 }
 
+/**
+ * Diz se a página declara JSON-LD de schema.org/Product — usado para
+ * distinguir "página de 1 produto" de "página de listagem/categoria" antes
+ * de decidir se vale a pena procurar links de produto nela.
+ */
+export function pageDeclaresProductSchema(html: string): boolean {
+  const $ = cheerio.load(html);
+  let found = false;
+
+  $('script[type="application/ld+json"]').each((_, el) => {
+    if (found) return;
+    const raw = $(el).contents().text();
+    if (!raw?.trim()) return;
+    try {
+      if (findProductNode(JSON.parse(raw))) found = true;
+    } catch {
+      // bloco de JSON-LD malformado — ignora e segue tentando os outros
+    }
+  });
+
+  return found;
+}
+
 // ---------------------------------------------------------------------------
 // Camada 2: meta tags Open Graph / product:*
 // ---------------------------------------------------------------------------
