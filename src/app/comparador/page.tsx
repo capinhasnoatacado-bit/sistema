@@ -1,5 +1,7 @@
 import { Barlow_Condensed, IBM_Plex_Mono, Public_Sans } from "next/font/google";
 import { createClient } from "@/lib/supabase/server";
+import { CartBadge } from "@/components/CartBadge";
+import { AddToCartButton } from "./AddToCartButton";
 
 // searchParams é request-time (não dá pra pré-renderizar essa página).
 export const dynamic = "force-dynamic";
@@ -183,18 +185,21 @@ export default async function ComparadorPage({
       style={{ ...TEMA_ESCURO, fontFamily: "var(--font-body), ui-sans-serif, system-ui, sans-serif" }}
     >
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 p-6 sm:p-8">
-      <header className="flex flex-col gap-1">
-        <p className="font-[family-name:var(--font-data-mono)] text-[11px] font-medium tracking-[0.14em] text-[var(--accent)] uppercase">
-          Capi Atacado · Reposição de estoque
-        </p>
-        <h1 className="text-balance font-[family-name:var(--font-display)] text-4xl leading-[1.02] font-bold tracking-tight text-[var(--ink)]">
-          Comparador de Cabos
-        </h1>
-        <p className="max-w-[62ch] text-[15px] text-[var(--ink-muted)]">
-          Mesmo cabo, fornecedor diferente, preço diferente. Filtre por conector, comprimento, cor
-          e fornecedor pra achar o mais barato — sempre em preço por peça. A equivalência é
-          escolhida por você, não é automática.
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex flex-col gap-1">
+          <p className="font-[family-name:var(--font-data-mono)] text-[11px] font-medium tracking-[0.14em] text-[var(--accent)] uppercase">
+            Capi Atacado · Reposição de estoque
+          </p>
+          <h1 className="text-balance font-[family-name:var(--font-display)] text-4xl leading-[1.02] font-bold tracking-tight text-[var(--ink)]">
+            Comparador de Cabos
+          </h1>
+          <p className="max-w-[62ch] text-[15px] text-[var(--ink-muted)]">
+            Mesmo cabo, fornecedor diferente, preço diferente. Filtre por conector, comprimento, cor
+            e fornecedor pra achar o mais barato — sempre em preço por peça. A equivalência é
+            escolhida por você, não é automática.
+          </p>
+        </div>
+        <CartBadge />
       </header>
 
       <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[10px] border border-[var(--border)] bg-[var(--border)] sm:grid-cols-4">
@@ -288,6 +293,7 @@ export default async function ComparadorPage({
               <Th>Material</Th>
               <Th align="right">Preço/peça</Th>
               <Th align="right">MOQ</Th>
+              <Th align="right">Pedido</Th>
             </tr>
           </thead>
           <tbody>
@@ -334,13 +340,23 @@ export default async function ComparadorPage({
                     {ehMaisBarato ? " 🏆" : ""}
                   </Td>
                   <Td align="right">{produto.moq ?? "—"}</Td>
+                  <Td align="right">
+                    <AddToCartButton
+                      produtoId={produto.id}
+                      codigo={produto.codigo}
+                      nome={produto.nome}
+                      fornecedor={nomeFornecedor}
+                      precoUnitario={produto.preco_unitario}
+                      moq={produto.moq}
+                    />
+                  </Td>
                 </tr>
               );
             })}
 
             {resultado.length === 0 && (
               <tr>
-                <td colSpan={9} className="p-10 text-center text-[var(--ink-muted)]">
+                <td colSpan={10} className="p-10 text-center text-[var(--ink-muted)]">
                   Nenhum cabo encontrado com esses filtros.
                 </td>
               </tr>
