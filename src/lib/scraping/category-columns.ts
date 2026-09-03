@@ -16,7 +16,14 @@ export type ColunaCategoria = {
 // Range de marcas diacríticas combinantes (Unicode U+0300–U+036F) — remove acento depois do normalize("NFD").
 const MARCAS_DIACRITICAS = /[̀-ͯ]/g;
 
-function normalizarChave(chave: string): string {
+/**
+ * Normaliza uma chave/rótulo pra comparar sem se importar com acento,
+ * maiúscula, espaço, `_` ou pontuação — ex: "conector_origem" e "Conector
+ * origem" viram a mesma string ("conectororigem"). Também usada fora deste
+ * módulo pra comparar `produtos.especificacoes` (chave canônica) com
+ * `benchmark_produtos.especificacoes` (rótulo livre) no /comparador.
+ */
+export function normalizarChave(chave: string): string {
   return chave
     .normalize("NFD")
     .replace(MARCAS_DIACRITICAS, "")

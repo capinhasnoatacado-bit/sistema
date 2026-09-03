@@ -3,6 +3,7 @@ import { CartBadge } from "@/components/CartBadge";
 import { AddToCartButton } from "./AddToCartButton";
 import { CLASSES_FONTES } from "@/lib/fonts";
 import { TEMA_ESCURO, TAG_FORNECEDOR, TAG_FORNECEDOR_PADRAO } from "@/lib/theme";
+import { normalizarChave } from "@/lib/scraping/category-columns";
 
 // searchParams é request-time (não dá pra pré-renderizar essa página).
 export const dynamic = "force-dynamic";
@@ -76,6 +77,100 @@ async function fetchCabos(): Promise<ProdutoRow[]> {
   return (data ?? []) as unknown as ProdutoRow[];
 }
 
+type ConcorrenteMatch = {
+  precoUnitario: number;
+  siteOrigem: string | null;
+  urlProduto: string;
+};
+
+/** Produto de concorrente (benchmark) com preço preenchido — sem preço não ajuda a decidir, então já filtrado no fetch. */
+type BenchmarkProdutoParaMatch = {
+  codigo: string | null;
+  preco: number;
+  especificacoes: Record<string, string> | null;
+  url_produto: string;
+  benchmark_jobs: { site_origem: string | null } | null;
+};
+
+async function fetchConcorrentes(): Promise<BenchmarkProdutoParaMatch[]> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("benchmark_produtos")
+    .select("codigo, preco, especificacoes, url_produto, benchmark_jobs(site_origem)")
+    .not("preco", "is", null)
+    .limit(2000);
+
+  if (error) {
+    throw new Error(`Falha ao buscar produtos de concorrentes: ${error.message}`);
+  }
+
+  return (data ?? []) as unknown as BenchmarkProdutoParaMatch[];
+}
+
+function valorNumerico(texto: string): number | null {
+  const encontrado = texto.replace(",", ".").match(/[\d.]+/);
+  return encontrado ? Number.parseFloat(encontrado[0]) : null;
+}
+
+/** Comparação tolerante a espaço/maiúscula e a número-com-unidade (ex: "1" bate com "1m", "1 metro"). */
+function valoresBatem(valorProduto: string, valorConcorrente: string): boolean {
+  const a = valorProduto.trim().toLowerCase();
+  const b = valorConcorrente.trim().toLowerCase();
+  if (a === b) return true;
+
+  const numeroA = valorNumerico(a);
+  const numeroB = valorNumerico(b);
+  return numeroA !== null && numeroB !== null && numeroA === numeroB;
+}
+
+/**
+ * Bate quando TODA especificação que o produto tem (conector, comprimento,
+ * amperagem, material, cor) encontra um valor equivalente no concorrente —
+ * comparando a chave normalizada (ver `normalizarChave`, que já trata
+ * "conector_origem" e "Conector origem" como a mesma coisa) e o valor com
+ * `valoresBatem`. Produto sem nenhuma especificação preenchida nunca bate
+ * por aqui (evita "combinar" só por acaso os dois estarem vazios).
+ */
+function especificacoesBatem(produtoEspec: Especificacoes | null, concorrenteEspec: Record<string, string> | null): boolean {
+  if (!produtoEspec || !concorrenteEspec) return false;
+
+  const entradasProduto = Object.entries(produtoEspec).filter(
+    ([, valor]) => valor !== undefined && valor !== null && valor !== "",
+  );
+  if (entradasProduto.length === 0) return false;
+
+  const concorrentePorChaveNormalizada = new Map<string, string>();
+  for (const [label, valor] of Object.entries(concorrenteEspec)) {
+    concorrentePorChaveNormalizada.set(normalizarChave(label), valor);
+  }
+
+  return entradasProduto.every(([chave, valor]) => {
+    const valorConcorrente = concorrentePorChaveNormalizada.get(normalizarChave(chave));
+    return valorConcorrente !== undefined && valoresBatem(String(valor), valorConcorrente);
+  });
+}
+
+/** Mesmo produto quando o código bate (raro — cada loja usa o código dela) ou quando todas as especificações batem. */
+function produtoBateComConcorrente(produto: ProdutoRow, concorrente: BenchmarkProdutoParaMatch): boolean {
+  if (produto.codigo && concorrente.codigo && produto.codigo.trim().toLowerCase() === concorrente.codigo.trim().toLowerCase()) {
+    return true;
+  }
+  return especificacoesBatem(produto.especificacoes, concorrente.especificacoes);
+}
+
+/** Concorrentes equivalentes a esse produto, do mais barato pro mais caro. */
+function concorrentesDoProduto(produto: ProdutoRow, todosOsConcorrentes: BenchmarkProdutoParaMatch[]): ConcorrenteMatch[] {
+  return todosOsConcorrentes
+    .filter((concorrente) => produtoBateComConcorrente(produto, concorrente))
+    .map((concorrente) => ({
+      precoUnitario: concorrente.preco,
+      siteOrigem: concorrente.benchmark_jobs?.site_origem ?? null,
+      urlProduto: concorrente.url_produto,
+    }))
+    .sort((a, b) => a.precoUnitario - b.precoUnitario);
+}
+
 /** Valores únicos (ordenados) presentes nos produtos, pra montar os selects de filtro. */
 function opcoesDe(produtos: ProdutoRow[], campo: "conector_origem" | "conector_destino" | "comprimento_m") {
   const valores = new Set<string>();
@@ -139,6 +234,7 @@ export default async function ComparadorPage({
   };
 
   const todosOsCabos = await fetchCabos();
+  const todosOsConcorrentes = await fetchConcorrentes();
   const resultado = aplicaFiltros(todosOsCabos, filtros);
 
   const origens = opcoesDe(todosOsCabos, "conector_origem");
@@ -171,8 +267,10 @@ export default async function ComparadorPage({
           </h1>
           <p className="max-w-[62ch] text-[15px] text-[var(--ink-muted)]">
             Mesmo cabo, fornecedor diferente, preço diferente. Filtre por conector, comprimento, cor
-            e fornecedor pra achar o mais barato — sempre em preço por peça. A equivalência é
-            escolhida por você, não é automática.
+            e fornecedor pra achar o mais barato — sempre em preço por peça. A equivalência entre
+            fornecedores é escolhida por você, não é automática. A coluna &ldquo;Concorrentes&rdquo; já é
+            automática: cruza com o que foi importado em <code className="font-[family-name:var(--font-data-mono)]">/benchmark</code> por
+            código ou por especificação equivalente.
           </p>
         </div>
         <CartBadge />
@@ -268,6 +366,7 @@ export default async function ComparadorPage({
               <Th>Potência</Th>
               <Th>Material</Th>
               <Th align="right">Preço/peça</Th>
+              <Th>Concorrentes</Th>
               <Th align="right">MOQ</Th>
               <Th align="right">Pedido</Th>
             </tr>
@@ -277,6 +376,7 @@ export default async function ComparadorPage({
               const spec = produto.especificacoes ?? {};
               const ehMaisBarato = produto.preco_unitario === menorPreco;
               const nomeFornecedor = produto.fornecedores?.nome ?? "";
+              const concorrentes = concorrentesDoProduto(produto, todosOsConcorrentes);
 
               return (
                 <tr
@@ -315,6 +415,30 @@ export default async function ComparadorPage({
                     {currency.format(produto.preco_unitario)}
                     {ehMaisBarato ? " 🏆" : ""}
                   </Td>
+                  <Td className="max-w-[280px] text-[var(--ink-muted)]">
+                    {concorrentes.length > 0 ? (
+                      <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                        {concorrentes.map((concorrente, indice) => (
+                          <a
+                            key={indice}
+                            href={concorrente.urlProduto}
+                            target="_blank"
+                            rel="noreferrer noopener"
+                            title={concorrente.siteOrigem ?? concorrente.urlProduto}
+                            className={`font-[family-name:var(--font-data-mono)] whitespace-nowrap underline decoration-[var(--border)] underline-offset-2 hover:text-[var(--accent)] ${
+                              concorrente.precoUnitario < produto.preco_unitario
+                                ? "font-semibold text-[var(--bad)]"
+                                : ""
+                            }`}
+                          >
+                            {currency.format(concorrente.precoUnitario)} ({concorrente.siteOrigem ?? "concorrente"})
+                          </a>
+                        ))}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </Td>
                   <Td align="right">{produto.moq ?? "—"}</Td>
                   <Td align="right">
                     <AddToCartButton
@@ -332,7 +456,7 @@ export default async function ComparadorPage({
 
             {resultado.length === 0 && (
               <tr>
-                <td colSpan={10} className="p-10 text-center text-[var(--ink-muted)]">
+                <td colSpan={11} className="p-10 text-center text-[var(--ink-muted)]">
                   Nenhum cabo encontrado com esses filtros.
                 </td>
               </tr>
