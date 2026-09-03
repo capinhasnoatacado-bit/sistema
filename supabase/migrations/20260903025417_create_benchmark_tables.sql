@@ -15,6 +15,12 @@
 --   comprimento, outra categoria pode ter outra coisa).
 -- * Sem RLS, mesma decisão já tomada pra fornecedores/produtos/pedidos —
 --   projeto ainda não tem Auth implementado.
+-- * `urls_pendentes` guarda a fila de links de produto ainda não
+--   processados. O processamento roda em lotes pequenos (uma chamada por
+--   lote, não uma função de longa duração) pra caber no tempo de uma
+--   requisição serverless — cada chamada tira um punhado de URLs da fila,
+--   processa, e regrava o restante. É o que permite retomar de onde parou
+--   mesmo que o navegador feche no meio do processamento.
 
 create table public.benchmark_jobs (
   id uuid primary key default gen_random_uuid(),
@@ -25,6 +31,8 @@ create table public.benchmark_jobs (
     check (status in ('pendente', 'processando', 'concluido', 'erro')),
   total_encontrado integer not null default 0,
   total_importado integer not null default 0,
+  total_com_erro integer not null default 0,
+  urls_pendentes text[] not null default '{}'::text[],
   mensagem_erro text,
   criado_em timestamptz not null default now(),
   iniciado_em timestamptz,
@@ -37,6 +45,10 @@ comment on column public.benchmark_jobs.tipo is
   'Detectado automaticamente ao processar: "produto" (uma página) ou "categoria" (listagem paginada).';
 comment on column public.benchmark_jobs.status is
   'pendente -> processando -> concluido | erro.';
+comment on column public.benchmark_jobs.urls_pendentes is
+  'Fila de links de produto ainda não processados nesse job — esvazia conforme os lotes são processados.';
+comment on column public.benchmark_jobs.total_com_erro is
+  'Quantos produtos da fila falharam na extração (não derruba o job inteiro, só é contabilizado).';
 
 create table public.benchmark_produtos (
   id uuid primary key default gen_random_uuid(),

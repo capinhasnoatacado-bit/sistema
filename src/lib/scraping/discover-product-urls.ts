@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import type { Cheerio } from "cheerio";
 import type { AnyNode } from "domhandler";
+import { delay } from "./delay";
 import { fetchHtml } from "./fetch-html";
 import { pageDeclaresProductSchema } from "./extract-product";
 
@@ -133,10 +134,6 @@ function findNextPageUrl(html: string, pageUrl: string, visited: Set<string>): s
     });
 
   return candidate;
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
