@@ -5,23 +5,11 @@ import { TEMA_ESCURO } from "@/lib/theme";
 import { ImportPanel } from "./ImportPanel";
 import { JobProgress } from "./JobProgress";
 import { DeleteJobButton } from "./DeleteJobButton";
+import { ProdutosTable, type BenchmarkProdutoRow } from "./ProdutosTable";
 import type { BenchmarkJob } from "@/lib/scraping/job-runner";
 
 // job/produtos vêm de searchParams e do banco — não dá pra pré-renderizar.
 export const dynamic = "force-dynamic";
-
-type BenchmarkProdutoRow = {
-  id: string;
-  url_produto: string;
-  nome: string | null;
-  marca: string | null;
-  codigo: string | null;
-  preco: number | null;
-  imagem_url: string | null;
-  especificacoes: Record<string, string> | null;
-};
-
-const currency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 const STATUS_LABEL: Record<BenchmarkJob["status"], string> = {
   pendente: "Analisando",
@@ -50,13 +38,6 @@ async function fetchProdutosDoJob(supabase: SupabaseClient, jobId: string): Prom
 
   if (error) throw new Error(`Falha ao buscar os produtos do job: ${error.message}`);
   return (data ?? []) as BenchmarkProdutoRow[];
-}
-
-function formatEspecificacoes(spec: Record<string, string> | null): string {
-  if (!spec) return "";
-  return Object.entries(spec)
-    .map(([label, value]) => `${label}: ${value}`)
-    .join(" · ");
 }
 
 export default async function BenchmarkPage({
@@ -106,59 +87,7 @@ export default async function BenchmarkPage({
             <JobProgress key={jobSelecionado.id} job={jobSelecionado} />
 
             {jobSelecionado.status === "concluido" && (
-              <div className="max-h-[65vh] overflow-auto rounded-[10px] border border-[var(--border)] bg-[var(--surface)]">
-                <table className="w-full min-w-[900px] border-collapse text-[13.5px]">
-                  <thead>
-                    <tr>
-                      <Th>Produto</Th>
-                      <Th>Código</Th>
-                      <Th>Marca</Th>
-                      <Th align="right">Preço</Th>
-                      <Th>Especificações</Th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {produtos.map((produto) => (
-                      <tr
-                        key={produto.id}
-                        className="border-b border-[var(--border)]/60 last:border-0 hover:bg-[var(--surface-alt)]"
-                      >
-                        <Td>
-                          <a
-                            href={produto.url_produto}
-                            target="_blank"
-                            rel="noreferrer noopener"
-                            className="text-[var(--ink)] underline decoration-[var(--border)] underline-offset-2 hover:text-[var(--accent)]"
-                          >
-                            {produto.nome ?? "(sem nome)"}
-                          </a>
-                        </Td>
-                        <Td className="font-[family-name:var(--font-data-mono)] text-xs text-[var(--ink-muted)]">
-                          {produto.codigo ?? "—"}
-                        </Td>
-                        <Td>{produto.marca ?? "—"}</Td>
-                        <Td align="right" className="font-[family-name:var(--font-data-mono)]">
-                          {produto.preco !== null ? currency.format(produto.preco) : "—"}
-                        </Td>
-                        <Td
-                          className="max-w-[320px] truncate text-[var(--ink-muted)]"
-                          title={formatEspecificacoes(produto.especificacoes)}
-                        >
-                          {formatEspecificacoes(produto.especificacoes) || "—"}
-                        </Td>
-                      </tr>
-                    ))}
-
-                    {produtos.length === 0 && (
-                      <tr>
-                        <td colSpan={5} className="p-10 text-center text-[var(--ink-muted)]">
-                          Nenhum produto foi importado nesse job.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <ProdutosTable produtos={produtos} />
             )}
           </div>
         )}
@@ -210,38 +139,5 @@ export default async function BenchmarkPage({
         )}
       </main>
     </div>
-  );
-}
-
-function Th({ children, align = "left" }: { children: React.ReactNode; align?: "left" | "right" }) {
-  return (
-    <th
-      className={`sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--surface-alt)] px-3.5 py-2.5 font-[family-name:var(--font-data-mono)] text-[10.5px] font-medium tracking-[0.06em] whitespace-nowrap text-[var(--ink-muted)] uppercase ${
-        align === "right" ? "text-right" : "text-left"
-      }`}
-    >
-      {children}
-    </th>
-  );
-}
-
-function Td({
-  children,
-  align = "left",
-  className,
-  title,
-}: {
-  children: React.ReactNode;
-  align?: "left" | "right";
-  className?: string;
-  title?: string;
-}) {
-  return (
-    <td
-      title={title}
-      className={`px-3.5 py-2.5 text-[var(--ink)] ${align === "right" ? "text-right tabular-nums" : "text-left"} ${className ?? ""}`}
-    >
-      {children}
-    </td>
   );
 }

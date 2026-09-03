@@ -49,6 +49,45 @@ export async function excluirBenchmarkJob(jobId: string): Promise<void> {
   }
 }
 
+export type AtualizarProdutoInput = {
+  produtoId: string;
+  nome: string;
+  marca: string;
+  codigo: string;
+  preco: string;
+  especificacoesTexto: string;
+};
+
+/** Edita um produto já importado (link, cadastro manual ou lote) — corrige o que o scraping trouxe errado. */
+export async function atualizarProdutoBenchmark(input: AtualizarProdutoInput): Promise<void> {
+  const nome = input.nome.trim();
+  if (!nome) {
+    throw new Error("Digite o nome do produto.");
+  }
+
+  const precoTexto = input.preco.trim();
+  const preco = precoTexto ? parsePtBrCurrency(precoTexto) : null;
+  if (precoTexto && preco === null) {
+    throw new Error("Não entendi esse preço.");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("benchmark_produtos")
+    .update({
+      nome,
+      marca: input.marca.trim() || null,
+      codigo: input.codigo.trim() || null,
+      preco,
+      especificacoes: parseEspecificacoesTexto(input.especificacoesTexto),
+    })
+    .eq("id", input.produtoId);
+
+  if (error) {
+    throw new Error(`Falha ao salvar o produto: ${error.message}`);
+  }
+}
+
 export type CadastroManualInput = {
   urlProduto: string;
   nome: string;
