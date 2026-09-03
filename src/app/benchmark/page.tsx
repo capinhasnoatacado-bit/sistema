@@ -4,6 +4,7 @@ import { CLASSES_FONTES } from "@/lib/fonts";
 import { TEMA_ESCURO } from "@/lib/theme";
 import { ImportForm } from "./ImportForm";
 import { JobProgress } from "./JobProgress";
+import { DeleteJobButton } from "./DeleteJobButton";
 import type { BenchmarkJob } from "@/lib/scraping/job-runner";
 
 // job/produtos vêm de searchParams e do banco — não dá pra pré-renderizar.
@@ -169,14 +170,17 @@ export default async function BenchmarkPage({
             </p>
             <ul className="flex flex-col gap-1.5">
               {jobs.map((job) => (
-                <li key={job.id}>
+                <li
+                  key={job.id}
+                  className={`flex items-center gap-2 rounded-md border pr-2 text-[13px] ${
+                    job.id === jobIdSelecionado
+                      ? "border-[var(--accent)] bg-[var(--surface-alt)]"
+                      : "border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-alt)]"
+                  }`}
+                >
                   <a
                     href={`/benchmark?job=${job.id}`}
-                    className={`flex items-center justify-between gap-3 rounded-md border px-3.5 py-2.5 text-[13px] ${
-                      job.id === jobIdSelecionado
-                        ? "border-[var(--accent)] bg-[var(--surface-alt)]"
-                        : "border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-alt)]"
-                    }`}
+                    className="flex flex-1 items-center justify-between gap-3 py-2.5 pl-3.5"
                   >
                     <span className="truncate text-[var(--ink)]" title={job.url_origem}>
                       {job.site_origem ?? job.url_origem}
@@ -198,6 +202,7 @@ export default async function BenchmarkPage({
                       </span>
                     </span>
                   </a>
+                  <DeleteJobButton jobId={job.id} selecionado={job.id === jobIdSelecionado} />
                 </li>
               ))}
             </ul>

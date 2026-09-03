@@ -31,3 +31,12 @@ export async function avancarBenchmarkJob(jobId: string): Promise<BenchmarkJob> 
   const supabase = await createClient();
   return processarProximoLote(supabase, jobId);
 }
+
+/** Exclui o job e, por cascade (FK em benchmark_produtos), os produtos importados nele junto. */
+export async function excluirBenchmarkJob(jobId: string): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.from("benchmark_jobs").delete().eq("id", jobId);
+  if (error) {
+    throw new Error(`Falha ao excluir a importação: ${error.message}`);
+  }
+}
