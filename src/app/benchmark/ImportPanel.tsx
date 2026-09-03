@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ImportForm } from "./ImportForm";
 import { ManualEntryForm } from "./ManualEntryForm";
 import { ManualBulkForm } from "./ManualBulkForm";
+import type { CategoriaOpcao } from "./CampoCategoria";
 
 const ABA_CLASS_ATIVA = "border-[var(--accent)] bg-[var(--surface-alt)] text-[var(--ink)]";
 const ABA_CLASS_INATIVA = "border-[var(--border)] bg-[var(--surface)] text-[var(--ink-muted)] hover:text-[var(--ink)]";
@@ -11,7 +12,7 @@ const ABA_CLASS_INATIVA = "border-[var(--border)] bg-[var(--surface)] text-[var(
 type Aba = "link" | "manual" | "lote";
 
 /** Alterna entre importar por link (automático), cadastrar 1 produto manualmente (site com login) ou vários de uma vez (listagem sem scraping). */
-export function ImportPanel({ categorias }: { categorias: string[] }) {
+export function ImportPanel({ categorias }: { categorias: CategoriaOpcao[] }) {
   const [aba, setAba] = useState<Aba>("link");
 
   return (

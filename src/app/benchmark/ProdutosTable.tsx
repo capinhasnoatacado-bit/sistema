@@ -9,7 +9,7 @@ import {
   excluirProdutosBenchmarkEmLote,
 } from "./actions";
 import { AtualizarPrecosButton } from "./AtualizarPrecosButton";
-import { colunasParaCategoria, valoresDasColunas, type ColunaCategoria } from "@/lib/scraping/category-columns";
+import { valoresDasColunas, type ColunaCategoria } from "@/lib/scraping/category-columns";
 
 export type BenchmarkProdutoRow = {
   id: string;
@@ -60,16 +60,17 @@ function camposIniciais(produto: BenchmarkProdutoRow): CamposEdicao {
 export function ProdutosTable({
   produtos,
   jobTipo,
-  jobCategoria,
+  colunas,
 }: {
   produtos: BenchmarkProdutoRow[];
   /** Job "manual" não tem página real pra rebuscar preço — some o botão "Atualizar preços" nesse caso. */
   jobTipo: "produto" | "categoria" | "manual" | null;
-  /** Categoria sem colunas dedicadas conhecidas (ex: null, ou uma nova ainda sem mapeamento) cai na coluna genérica "Especificações". */
-  jobCategoria: string | null;
+  /** Colunas dedicadas da categoria do job (resolvidas em page.tsx a partir dos campos cadastrados em /configuracoes) — `null`/vazio cai na coluna genérica "Especificações". */
+  colunas: ColunaCategoria[] | null;
 }) {
-  const colunas = colunasParaCategoria(jobCategoria);
-  const numeroColunasEspecificacoes = colunas?.length ?? 1;
+  // Categoria com 0 campos cadastrados se comporta como "sem colunas dedicadas" (cai no fallback genérico).
+  const colunasEfetivas = colunas && colunas.length > 0 ? colunas : null;
+  const numeroColunasEspecificacoes = colunasEfetivas?.length ?? 1;
 
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [modoEdicaoTotal, setModoEdicaoTotal] = useState(false);
@@ -227,7 +228,11 @@ export function ProdutosTable({
               <Th>Código</Th>
               <Th>Marca</Th>
               <Th align="right">Preço</Th>
-              {colunas ? colunas.map((coluna) => <Th key={coluna.chave}>{coluna.rotulo}</Th>) : <Th>Especificações</Th>}
+              {colunasEfetivas ? (
+                colunasEfetivas.map((coluna) => <Th key={coluna.chave}>{coluna.rotulo}</Th>)
+              ) : (
+                <Th>Especificações</Th>
+              )}
               <Th align="right"> </Th>
             </tr>
           </thead>
@@ -254,7 +259,7 @@ export function ProdutosTable({
                 <LinhaVisualizacao
                   key={produto.id}
                   produto={produto}
-                  colunas={colunas}
+                  colunas={colunasEfetivas}
                   onEditar={() => setEditandoId(produto.id)}
                 />
               ),

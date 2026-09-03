@@ -1,12 +1,12 @@
 "use client";
 
-const DATALIST_ID = "benchmark-categorias-existentes";
+export type CategoriaOpcao = { id: string; nome: string };
 
 /**
- * Combo "escolha ou digite" pra categoria — mesma ideia do `categoria` de
- * texto livre da tabela `produtos` real (sem lista fixa/enum): sugere as
- * categorias já usadas antes via `<datalist>`, mas aceita digitar uma nova.
- * Opcional — item sem categoria cai no grupo "Sem categoria" na listagem.
+ * Select obrigatório de categoria — categorias vêm de `/configuracoes`
+ * (não dá mais pra digitar uma nova aqui: categoria virou entidade de
+ * verdade, com os campos que definem as colunas da tabela). Sem nenhuma
+ * categoria cadastrada ainda, mostra um aviso com link pra criar uma.
  */
 export function CampoCategoria({
   value,
@@ -16,23 +16,31 @@ export function CampoCategoria({
 }: {
   value: string;
   onChange: (valor: string) => void;
-  categorias: string[];
+  categorias: CategoriaOpcao[];
   className?: string;
 }) {
+  if (categorias.length === 0) {
+    return (
+      <p className="text-[12px] text-[var(--bad)]">
+        Nenhuma categoria cadastrada —{" "}
+        <a href="/configuracoes" className="underline decoration-[var(--bad-border)] underline-offset-2">
+          crie uma em Configurações
+        </a>
+        .
+      </p>
+    );
+  }
+
   return (
-    <>
-      <input
-        list={DATALIST_ID}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="cabo"
-        className={className}
-      />
-      <datalist id={DATALIST_ID}>
-        {categorias.map((categoria) => (
-          <option key={categoria} value={categoria} />
-        ))}
-      </datalist>
-    </>
+    <select required value={value} onChange={(e) => onChange(e.target.value)} className={className}>
+      <option value="" disabled>
+        Selecione…
+      </option>
+      {categorias.map((categoria) => (
+        <option key={categoria.id} value={categoria.id}>
+          {categoria.nome}
+        </option>
+      ))}
+    </select>
   );
 }

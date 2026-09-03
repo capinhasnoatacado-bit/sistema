@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cadastrarProdutosManualEmLote } from "./actions";
-import { CampoCategoria } from "./CampoCategoria";
+import { CampoCategoria, type CategoriaOpcao } from "./CampoCategoria";
 
 const INPUT_CLASS =
   "h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 font-[family-name:var(--font-body)] text-[13.5px] font-normal tracking-normal text-[var(--ink)] normal-case focus-visible:outline-2 focus-visible:outline-[var(--accent)]";
@@ -18,10 +18,10 @@ Cabo De Dados Tpc 1M Pei-S13-2 | Pei-S13-2 | Peining | 3,80 | Conector=USB-C`;
  * produto, formato "Nome | Código | Marca | Preço | Especificações"
  * (só o nome é obrigatório; especificações é "Rótulo=Valor; Rótulo=Valor").
  */
-export function ManualBulkForm({ categorias }: { categorias: string[] }) {
+export function ManualBulkForm({ categorias }: { categorias: CategoriaOpcao[] }) {
   const [urlOrigem, setUrlOrigem] = useState("");
   const [linhas, setLinhas] = useState("");
-  const [categoria, setCategoria] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -30,10 +30,10 @@ export function ManualBulkForm({ categorias }: { categorias: string[] }) {
     setErro(null);
     startTransition(async () => {
       try {
-        const resultado = await cadastrarProdutosManualEmLote({ urlOrigem, linhas, categoria });
+        const resultado = await cadastrarProdutosManualEmLote({ urlOrigem, linhas, categoriaId });
         setUrlOrigem("");
         setLinhas("");
-        setCategoria("");
+        setCategoriaId("");
         router.push(`/benchmark?job=${resultado.jobId}`);
       } catch (err) {
         setErro(err instanceof Error ? err.message : "Falha ao cadastrar os produtos.");
@@ -68,8 +68,8 @@ export function ManualBulkForm({ categorias }: { categorias: string[] }) {
         </label>
 
         <label className="flex w-[160px] flex-col gap-1.5 font-[family-name:var(--font-data-mono)] text-[10.5px] font-medium tracking-[0.06em] text-[var(--ink-muted)] uppercase">
-          Categoria (opcional)
-          <CampoCategoria value={categoria} onChange={setCategoria} categorias={categorias} className={INPUT_CLASS} />
+          Categoria
+          <CampoCategoria value={categoriaId} onChange={setCategoriaId} categorias={categorias} className={INPUT_CLASS} />
         </label>
       </div>
 

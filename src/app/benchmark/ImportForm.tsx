@@ -3,15 +3,15 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { iniciarBenchmark } from "./actions";
-import { CampoCategoria } from "./CampoCategoria";
+import { CampoCategoria, type CategoriaOpcao } from "./CampoCategoria";
 
 const INPUT_CLASS =
   "h-9 rounded-md border border-[var(--border)] bg-[var(--background)] px-3 font-[family-name:var(--font-body)] text-[13.5px] font-normal tracking-normal text-[var(--ink)] normal-case focus-visible:outline-2 focus-visible:outline-[var(--accent)]";
 
 /** Campo de link + categoria + botão — cria o job e leva pra tela de progresso dele. */
-export function ImportForm({ categorias }: { categorias: string[] }) {
+export function ImportForm({ categorias }: { categorias: CategoriaOpcao[] }) {
   const [url, setUrl] = useState("");
-  const [categoria, setCategoria] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
   const [erro, setErro] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -20,9 +20,9 @@ export function ImportForm({ categorias }: { categorias: string[] }) {
     setErro(null);
     startTransition(async () => {
       try {
-        const { jobId } = await iniciarBenchmark(url, categoria);
+        const { jobId } = await iniciarBenchmark(url, categoriaId);
         setUrl("");
-        setCategoria("");
+        setCategoriaId("");
         router.push(`/benchmark?job=${jobId}`);
       } catch (err) {
         setErro(err instanceof Error ? err.message : "Falha ao iniciar a importação.");
@@ -52,8 +52,8 @@ export function ImportForm({ categorias }: { categorias: string[] }) {
         </label>
 
         <label className="flex w-[160px] flex-col gap-1.5 font-[family-name:var(--font-data-mono)] text-[10.5px] font-medium tracking-[0.06em] text-[var(--ink-muted)] uppercase">
-          Categoria (opcional)
-          <CampoCategoria value={categoria} onChange={setCategoria} categorias={categorias} className={INPUT_CLASS} />
+          Categoria
+          <CampoCategoria value={categoriaId} onChange={setCategoriaId} categorias={categorias} className={INPUT_CLASS} />
         </label>
 
         <button

@@ -1,36 +1,16 @@
 export type ColunaCategoria = {
-  /** Mesma chave usada em `produtos.especificacoes` na tabela real (ver seed.sql) — testada primeiro, com prioridade sobre os aliases. */
+  /** O nome do campo como cadastrado em `/configuracoes` (`benchmark_categorias.campos`) — usado como rótulo da coluna e como chave de busca exata. */
   chave: string;
   rotulo: string;
   /**
-   * Pedaços de texto (já normalizados — ver `normalizarChave`) usados pra
-   * achar essa coluna dentro de `especificacoes` mesmo quando a chave não é
-   * a canônica. Necessário porque o scraping e o cadastro manual salvam o
-   * rótulo como o site/usuário escreveu ("Cor", "Comprimento do cabo"...),
-   * não a chave da tabela real — sem isso a coluna ficaria sempre vazia
-   * pra qualquer produto importado (só bateria pro que foi digitado exatamente igual).
+   * Pedaço de texto (já normalizado — ver `normalizarChave`) usado pra achar
+   * essa coluna dentro de `especificacoes` mesmo quando o rótulo salvo não é
+   * idêntico ao nome do campo. Necessário porque o scraping e o cadastro
+   * manual salvam o rótulo como o site/usuário escreveu ("Cor do cabo" pra
+   * um campo chamado "Cor"), não necessariamente igual ao nome do campo —
+   * sem isso a coluna ficaria vazia pra qualquer rótulo que não bata 100%.
    */
   aliases: string[];
-};
-
-/**
- * Colunas de destaque por categoria, lidas de dentro de `especificacoes`
- * (jsonb) — mesmos campos já usados na tabela real de produtos (ver
- * `supabase/migrations/20260902183013_create_fornecedores_produtos.sql` e
- * `supabase/seed.sql`), pra comparar concorrente x catálogo campo a campo.
- * Categoria sem entrada aqui cai no fallback: mostra a coluna genérica
- * "Especificações" (texto livre "Rótulo: Valor") — como já era antes dessa
- * categorização existir.
- */
-export const COLUNAS_POR_CATEGORIA: Record<string, ColunaCategoria[]> = {
-  cabo: [
-    { chave: "cor", rotulo: "Cor", aliases: ["cor"] },
-    { chave: "comprimento_m", rotulo: "Comprimento (m)", aliases: ["comprimento", "tamanho"] },
-    { chave: "amperagem", rotulo: "Amperagem", aliases: ["amperagem", "amper", "corrente", "potencia"] },
-    { chave: "conector_origem", rotulo: "Conector origem", aliases: ["conectororigem", "entrada"] },
-    { chave: "conector_destino", rotulo: "Conector destino", aliases: ["conectordestino", "saida", "conector"] },
-    { chave: "material", rotulo: "Material", aliases: ["material"] },
-  ],
 };
 
 // Range de marcas diacríticas combinantes (Unicode U+0300–U+036F) — remove acento depois do normalize("NFD").
@@ -44,17 +24,38 @@ function normalizarChave(chave: string): string {
     .replace(/[^a-z0-9]+/g, "");
 }
 
-/** `null` quando a categoria não tem colunas dedicadas — quem chamar cai no fallback (coluna genérica). */
-export function colunasParaCategoria(categoria: string | null): ColunaCategoria[] | null {
-  if (!categoria) return null;
-  return COLUNAS_POR_CATEGORIA[categoria.trim().toLowerCase()] ?? null;
+/**
+ * Deriva o alias de busca a partir do nome do campo, ignorando qualquer
+ * parte entre parênteses (ex: "Comprimento (m)" → alias "comprimento") —
+ * sem isso um campo com unidade no nome nunca bateria com um rótulo
+ * scrapeado mais simples ("Comprimento", sem "(m)"). `null` quando não
+ * sobra nada útil pra comparar (nome só com símbolos/parênteses).
+ */
+function aliasDoRotulo(rotulo: string): string | null {
+  const semParenteses = rotulo.replace(/\([^)]*\)/g, " ");
+  const normalizado = normalizarChave(semParenteses);
+  return normalizado || null;
+}
+
+/**
+ * Monta as colunas de destaque a partir dos campos configurados pro usuário
+ * em `/configuracoes` (`benchmark_categorias.campos`) — substitui a coluna
+ * genérica "Especificações" por 1 coluna dedicada por campo. Categoria sem
+ * campos cadastrados (array vazio) devolve `[]`; quem chamar trata isso como
+ * "sem colunas dedicadas" e cai no fallback genérico.
+ */
+export function colunasDeCampos(campos: string[]): ColunaCategoria[] {
+  return campos.map((rotulo) => {
+    const alias = aliasDoRotulo(rotulo);
+    return { chave: rotulo, rotulo, aliases: alias ? [alias] : [] };
+  });
 }
 
 /**
  * Pra cada coluna, acha o valor em `especificacoes`: primeiro tenta a chave
- * canônica exata, depois procura (por ordem de coluna, sem repetir a mesma
- * entrada em 2 colunas) uma entrada cujo rótulo bata com algum alias.
- * `null` quando nenhuma entrada corresponde a essa coluna.
+ * exata (rótulo salvo idêntico ao nome do campo), depois procura (por ordem
+ * de coluna, sem repetir a mesma entrada em 2 colunas) uma entrada cujo
+ * rótulo bata com o alias. `null` quando nenhuma entrada corresponde.
  */
 export function valoresDasColunas(
   especificacoes: Record<string, string> | null,

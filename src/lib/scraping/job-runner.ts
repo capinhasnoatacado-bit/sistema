@@ -22,8 +22,8 @@ export type BenchmarkJob = {
   url_origem: string;
   site_origem: string | null;
   tipo: "produto" | "categoria" | "manual" | null;
-  /** Categoria do produto (ex: "cabo") — texto livre, igual a `produtos.categoria`. `null` = "Sem categoria". */
-  categoria: string | null;
+  /** Referência a `benchmark_categorias` — `null` = "Sem categoria" (categoria deletada depois, ou job muito antigo). */
+  categoria_id: string | null;
   status: BenchmarkJobStatus;
   total_encontrado: number;
   total_importado: number;
@@ -44,13 +44,13 @@ export type BenchmarkJob = {
 export async function criarBenchmarkJob(
   supabase: SupabaseClient,
   urlOrigem: string,
-  categoria: string | null,
+  categoriaId: string,
 ): Promise<BenchmarkJob> {
   const siteOrigem = safeHostname(urlOrigem);
 
   const { data, error } = await supabase
     .from("benchmark_jobs")
-    .insert({ url_origem: urlOrigem, site_origem: siteOrigem, categoria })
+    .insert({ url_origem: urlOrigem, site_origem: siteOrigem, categoria_id: categoriaId })
     .select()
     .single();
 
@@ -80,7 +80,7 @@ export type NovoProdutoManual = {
 export async function criarBenchmarkJobManual(
   supabase: SupabaseClient,
   produto: NovoProdutoManual,
-  categoria: string | null,
+  categoriaId: string,
 ): Promise<BenchmarkJob> {
   const agora = new Date().toISOString();
 
@@ -90,7 +90,7 @@ export async function criarBenchmarkJobManual(
       url_origem: produto.urlProduto,
       site_origem: safeHostname(produto.urlProduto),
       tipo: "manual",
-      categoria,
+      categoria_id: categoriaId,
       status: "concluido",
       total_encontrado: 1,
       total_importado: 1,
@@ -138,7 +138,7 @@ export async function criarBenchmarkJobManualEmLote(
   supabase: SupabaseClient,
   urlOrigem: string,
   produtos: ProdutoManualSemUrl[],
-  categoria: string | null,
+  categoriaId: string,
 ): Promise<BenchmarkJob> {
   const agora = new Date().toISOString();
 
@@ -148,7 +148,7 @@ export async function criarBenchmarkJobManualEmLote(
       url_origem: urlOrigem,
       site_origem: safeHostname(urlOrigem),
       tipo: "manual",
-      categoria,
+      categoria_id: categoriaId,
       status: "concluido",
       total_encontrado: produtos.length,
       total_importado: produtos.length,

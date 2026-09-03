@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { cadastrarProdutoManual } from "./actions";
-import { CampoCategoria } from "./CampoCategoria";
+import { CampoCategoria, type CategoriaOpcao } from "./CampoCategoria";
 
 const VAZIO = {
   urlProduto: "",
@@ -12,7 +12,7 @@ const VAZIO = {
   codigo: "",
   preco: "",
   especificacoesTexto: "",
-  categoria: "",
+  categoriaId: "",
 };
 
 const INPUT_CLASS =
@@ -24,7 +24,7 @@ const INPUT_CLASS =
  * print mandado pro Claude na conversa e digita os dados aqui; o produto
  * entra na mesma tabela dos importados por link, num job tipo "manual".
  */
-export function ManualEntryForm({ categorias }: { categorias: string[] }) {
+export function ManualEntryForm({ categorias }: { categorias: CategoriaOpcao[] }) {
   const [form, setForm] = useState(VAZIO);
   const [erro, setErro] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -93,10 +93,10 @@ export function ManualEntryForm({ categorias }: { categorias: string[] }) {
           />
         </Campo>
 
-        <Campo label="Categoria (opcional)">
+        <Campo label="Categoria">
           <CampoCategoria
-            value={form.categoria}
-            onChange={(valor) => set("categoria", valor)}
+            value={form.categoriaId}
+            onChange={(valor) => set("categoriaId", valor)}
             categorias={categorias}
             className={INPUT_CLASS}
           />

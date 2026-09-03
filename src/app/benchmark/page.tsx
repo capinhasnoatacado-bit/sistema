@@ -7,6 +7,8 @@ import { JobProgress } from "./JobProgress";
 import { DeleteJobButton } from "./DeleteJobButton";
 import { ProdutosTable, type BenchmarkProdutoRow } from "./ProdutosTable";
 import type { BenchmarkJob } from "@/lib/scraping/job-runner";
+import type { BenchmarkCategoria } from "../configuracoes/actions";
+import { colunasDeCampos, type ColunaCategoria } from "@/lib/scraping/category-columns";
 
 // job/produtos vêm de searchParams e do banco — não dá pra pré-renderizar.
 export const dynamic = "force-dynamic";
@@ -40,35 +42,32 @@ async function fetchProdutosDoJob(supabase: SupabaseClient, jobId: string): Prom
   return (data ?? []) as BenchmarkProdutoRow[];
 }
 
-/** Categorias já usadas em algum job — vira sugestão no combo de categoria dos formulários de importar/cadastrar. */
-async function fetchCategoriasExistentes(supabase: SupabaseClient): Promise<string[]> {
-  const { data, error } = await supabase.from("benchmark_jobs").select("categoria").not("categoria", "is", null);
-
+/** Categorias cadastradas em /configuracoes — usadas no select obrigatório dos formulários e pra resolver as colunas da tabela. */
+async function fetchCategorias(supabase: SupabaseClient): Promise<BenchmarkCategoria[]> {
+  const { data, error } = await supabase.from("benchmark_categorias").select().order("nome");
   if (error) throw new Error(`Falha ao buscar as categorias: ${error.message}`);
-
-  const unicas = new Set((data ?? []).map((row) => row.categoria as string));
-  return [...unicas].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  return (data ?? []) as BenchmarkCategoria[];
 }
 
-type GrupoDeJobs = { categoria: string | null; jobs: BenchmarkJob[] };
+type GrupoDeJobs = { nomeCategoria: string | null; jobs: BenchmarkJob[] };
 
 /** Agrupa a lista (já ordenada por mais recente) por categoria — categorias em ordem alfabética, "Sem categoria" sempre por último. */
-function agruparJobsPorCategoria(jobs: BenchmarkJob[]): GrupoDeJobs[] {
-  const porCategoria = new Map<string | null, BenchmarkJob[]>();
+function agruparJobsPorCategoria(jobs: BenchmarkJob[], categoriaPorId: Map<string, BenchmarkCategoria>): GrupoDeJobs[] {
+  const porCategoriaId = new Map<string | null, BenchmarkJob[]>();
   for (const job of jobs) {
-    const lista = porCategoria.get(job.categoria) ?? [];
+    const lista = porCategoriaId.get(job.categoria_id) ?? [];
     lista.push(job);
-    porCategoria.set(job.categoria, lista);
+    porCategoriaId.set(job.categoria_id, lista);
   }
 
-  const comCategoria = [...porCategoria.entries()]
+  const comCategoria = [...porCategoriaId.entries()]
     .filter((entrada): entrada is [string, BenchmarkJob[]] => entrada[0] !== null)
-    .sort(([a], [b]) => a.localeCompare(b, "pt-BR"))
-    .map(([categoria, jobs]) => ({ categoria, jobs }));
+    .map(([categoriaId, jobs]) => ({ nomeCategoria: categoriaPorId.get(categoriaId)?.nome ?? "Sem categoria", jobs }))
+    .sort((a, b) => a.nomeCategoria.localeCompare(b.nomeCategoria, "pt-BR"));
 
-  const semCategoria = porCategoria.get(null);
+  const semCategoria = porCategoriaId.get(null);
 
-  return semCategoria ? [...comCategoria, { categoria: null, jobs: semCategoria }] : comCategoria;
+  return semCategoria ? [...comCategoria, { nomeCategoria: null, jobs: semCategoria }] : comCategoria;
 }
 
 export default async function BenchmarkPage({
@@ -80,7 +79,9 @@ export default async function BenchmarkPage({
   const supabase = await createClient();
 
   const jobs = await fetchJobsRecentes(supabase);
-  const categorias = await fetchCategoriasExistentes(supabase);
+  const categorias = await fetchCategorias(supabase);
+  const categoriaPorId = new Map(categorias.map((categoria) => [categoria.id, categoria]));
+
   const jobIdSelecionado = params.job ?? jobs[0]?.id ?? null;
   const jobSelecionado = jobIdSelecionado ? (jobs.find((j) => j.id === jobIdSelecionado) ?? null) : null;
 
@@ -89,7 +90,14 @@ export default async function BenchmarkPage({
       ? await fetchProdutosDoJob(supabase, jobSelecionado.id)
       : [];
 
-  const gruposDeJobs = agruparJobsPorCategoria(jobs);
+  const categoriaDoJobSelecionado = jobSelecionado?.categoria_id
+    ? categoriaPorId.get(jobSelecionado.categoria_id)
+    : undefined;
+  const colunasDoJobSelecionado: ColunaCategoria[] | null = categoriaDoJobSelecionado?.campos.length
+    ? colunasDeCampos(categoriaDoJobSelecionado.campos)
+    : null;
+
+  const gruposDeJobs = agruparJobsPorCategoria(jobs, categoriaPorId);
 
   return (
     <div
@@ -98,9 +106,17 @@ export default async function BenchmarkPage({
     >
       <main className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 p-6 sm:p-8">
         <header className="flex flex-col gap-1">
-          <p className="font-[family-name:var(--font-data-mono)] text-[11px] font-medium tracking-[0.14em] text-[var(--accent)] uppercase">
-            Capi Atacado · Benchmark de preços
-          </p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-[family-name:var(--font-data-mono)] text-[11px] font-medium tracking-[0.14em] text-[var(--accent)] uppercase">
+              Capi Atacado · Benchmark de preços
+            </p>
+            <a
+              href="/configuracoes"
+              className="text-[12.5px] text-[var(--ink-muted)] underline decoration-[var(--border)] underline-offset-2 hover:text-[var(--accent)]"
+            >
+              ⚙️ Configurar categorias
+            </a>
+          </div>
           <h1 className="text-balance font-[family-name:var(--font-display)] text-4xl leading-[1.02] font-bold tracking-tight text-[var(--ink)]">
             Benchmark de Preços
           </h1>
@@ -111,7 +127,7 @@ export default async function BenchmarkPage({
           </p>
         </header>
 
-        <ImportPanel categorias={categorias} />
+        <ImportPanel categorias={categorias.map((categoria) => ({ id: categoria.id, nome: categoria.nome }))} />
 
         {jobSelecionado && (
           <div className="flex flex-col gap-4">
@@ -121,7 +137,7 @@ export default async function BenchmarkPage({
             <JobProgress key={jobSelecionado.id} job={jobSelecionado} />
 
             {jobSelecionado.status === "concluido" && (
-              <ProdutosTable produtos={produtos} jobTipo={jobSelecionado.tipo} jobCategoria={jobSelecionado.categoria} />
+              <ProdutosTable produtos={produtos} jobTipo={jobSelecionado.tipo} colunas={colunasDoJobSelecionado} />
             )}
           </div>
         )}
@@ -132,10 +148,10 @@ export default async function BenchmarkPage({
               Importações recentes
             </p>
             {gruposDeJobs.map((grupo) => (
-              <div key={grupo.categoria ?? "__sem_categoria__"} className="flex flex-col gap-2">
+              <div key={grupo.nomeCategoria ?? "__sem_categoria__"} className="flex flex-col gap-2">
                 {gruposDeJobs.length > 1 && (
                   <p className="font-[family-name:var(--font-data-mono)] text-[10.5px] font-medium tracking-[0.08em] text-[var(--accent)] uppercase">
-                    {grupo.categoria ?? "Sem categoria"}
+                    {grupo.nomeCategoria ?? "Sem categoria"}
                   </p>
                 )}
                 <ul className="flex flex-col gap-1.5">

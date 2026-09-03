@@ -21,7 +21,7 @@ import { parsePtBrCurrency } from "@/lib/scraping/parse-price";
 // essas actions (Server Actions herdam o maxDuration da rota que as invoca).
 
 /** Cria o job pro link colado pelo usuário e devolve o id pra tela começar a fazer polling. */
-export async function iniciarBenchmark(urlOrigem: string, categoria: string): Promise<{ jobId: string }> {
+export async function iniciarBenchmark(urlOrigem: string, categoriaId: string): Promise<{ jobId: string }> {
   const url = urlOrigem.trim();
   if (!url) {
     throw new Error("Cole o link de um produto ou categoria.");
@@ -31,9 +31,12 @@ export async function iniciarBenchmark(urlOrigem: string, categoria: string): Pr
   } catch {
     throw new Error("Esse link não parece válido.");
   }
+  if (!categoriaId.trim()) {
+    throw new Error("Escolha uma categoria.");
+  }
 
   const supabase = await createClient();
-  const job = await criarBenchmarkJob(supabase, url, categoria.trim() || null);
+  const job = await criarBenchmarkJob(supabase, url, categoriaId);
   return { jobId: job.id };
 }
 
@@ -217,7 +220,7 @@ export type CadastroManualInput = {
   codigo: string;
   preco: string;
   especificacoesTexto: string;
-  categoria: string;
+  categoriaId: string;
 };
 
 /**
@@ -241,6 +244,9 @@ export async function cadastrarProdutoManual(input: CadastroManualInput): Promis
   if (!nome) {
     throw new Error("Digite o nome do produto.");
   }
+  if (!input.categoriaId.trim()) {
+    throw new Error("Escolha uma categoria.");
+  }
 
   const precoTexto = input.preco.trim();
   const preco = precoTexto ? parsePtBrCurrency(precoTexto) : null;
@@ -259,7 +265,7 @@ export async function cadastrarProdutoManual(input: CadastroManualInput): Promis
       preco,
       especificacoes: parseEspecificacoesTexto(input.especificacoesTexto),
     },
-    input.categoria.trim() || null,
+    input.categoriaId,
   );
 
   return { jobId: job.id };
@@ -287,7 +293,7 @@ function parseEspecificacoesTexto(texto: string): Record<string, string> {
 export type CadastroManualLoteInput = {
   urlOrigem: string;
   linhas: string;
-  categoria: string;
+  categoriaId: string;
 };
 
 export type CadastroManualLoteResultado = {
@@ -315,6 +321,9 @@ export async function cadastrarProdutosManualEmLote(
   } catch {
     throw new Error("Esse link não parece válido.");
   }
+  if (!input.categoriaId.trim()) {
+    throw new Error("Escolha uma categoria.");
+  }
 
   const linhasBrutas = input.linhas.split("\n").map((l) => l.trim()).filter(Boolean);
   if (linhasBrutas.length === 0) {
@@ -335,7 +344,7 @@ export async function cadastrarProdutosManualEmLote(
   }
 
   const supabase = await createClient();
-  const job = await criarBenchmarkJobManualEmLote(supabase, urlOrigem, produtos, input.categoria.trim() || null);
+  const job = await criarBenchmarkJobManualEmLote(supabase, urlOrigem, produtos, input.categoriaId);
 
   return { jobId: job.id, totalCadastrado: produtos.length, linhasIgnoradas };
 }
