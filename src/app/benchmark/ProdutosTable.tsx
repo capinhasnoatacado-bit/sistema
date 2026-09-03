@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { atualizarProdutoBenchmark, excluirProdutoBenchmark } from "./actions";
+import { atualizarProdutoBenchmark, atualizarProdutosBenchmarkEmLote, excluirProdutoBenchmark } from "./actions";
 
 export type BenchmarkProdutoRow = {
   id: string;
@@ -32,41 +32,153 @@ function especificacoesParaTexto(spec: Record<string, string> | null): string {
     .join("\n");
 }
 
-/** Tabela de produtos importados, com edição inline por linha — corrige o que o scraping (ou o cadastro manual) trouxe errado. */
+type CamposEdicao = { nome: string; codigo: string; marca: string; preco: string; especTexto: string };
+
+function camposIniciais(produto: BenchmarkProdutoRow): CamposEdicao {
+  return {
+    nome: produto.nome ?? "",
+    codigo: produto.codigo ?? "",
+    marca: produto.marca ?? "",
+    preco: produto.preco !== null ? String(produto.preco).replace(".", ",") : "",
+    especTexto: especificacoesParaTexto(produto.especificacoes),
+  };
+}
+
+/**
+ * Tabela de produtos importados. Tem 2 jeitos de corrigir o que o scraping
+ * (ou o cadastro manual) trouxe errado: editar 1 linha por vez (✏️ na linha),
+ * ou "Editar tabela" no topo pra abrir todas as linhas de uma vez e salvar
+ * tudo junto — útil depois de uma importação grande com vários erros espalhados.
+ */
 export function ProdutosTable({ produtos }: { produtos: BenchmarkProdutoRow[] }) {
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [modoEdicaoTotal, setModoEdicaoTotal] = useState(false);
+  const [edicoes, setEdicoes] = useState<Record<string, CamposEdicao>>({});
+  const [erroTudo, setErroTudo] = useState<string | null>(null);
+  const [salvandoTudo, startTransitionTudo] = useTransition();
+  const router = useRouter();
+
+  function iniciarEdicaoTotal() {
+    const inicial: Record<string, CamposEdicao> = {};
+    for (const produto of produtos) inicial[produto.id] = camposIniciais(produto);
+    setEdicoes(inicial);
+    setErroTudo(null);
+    setEditandoId(null);
+    setModoEdicaoTotal(true);
+  }
+
+  function cancelarEdicaoTotal() {
+    setModoEdicaoTotal(false);
+    setEdicoes({});
+    setErroTudo(null);
+  }
+
+  function atualizarCampo(produtoId: string, campo: keyof CamposEdicao, valor: string) {
+    setEdicoes((atual) => ({ ...atual, [produtoId]: { ...atual[produtoId], [campo]: valor } }));
+  }
+
+  function salvarTudo() {
+    setErroTudo(null);
+    startTransitionTudo(async () => {
+      const itens = produtos.map((produto) => {
+        const campos = edicoes[produto.id] ?? camposIniciais(produto);
+        return {
+          produtoId: produto.id,
+          nome: campos.nome,
+          codigo: campos.codigo,
+          marca: campos.marca,
+          preco: campos.preco,
+          especificacoesTexto: campos.especTexto,
+        };
+      });
+
+      const resultado = await atualizarProdutosBenchmarkEmLote(itens);
+      router.refresh();
+
+      if (resultado.erros.length > 0) {
+        setErroTudo(
+          `${resultado.totalSalvo} produto(s) salvos. ${resultado.erros.length} falharam — corrija e clique em "Salvar tudo" de novo.`,
+        );
+      } else {
+        setModoEdicaoTotal(false);
+        setEdicoes({});
+      }
+    });
+  }
 
   return (
-    <div className="max-h-[65vh] overflow-auto rounded-[10px] border border-[var(--border)] bg-[var(--surface)]">
-      <table className="w-full min-w-[960px] border-collapse text-[13.5px]">
-        <thead>
-          <tr>
-            <Th>Produto</Th>
-            <Th>Código</Th>
-            <Th>Marca</Th>
-            <Th align="right">Preço</Th>
-            <Th>Especificações</Th>
-            <Th align="right"> </Th>
-          </tr>
-        </thead>
-        <tbody>
-          {produtos.map((produto) =>
-            editandoId === produto.id ? (
-              <LinhaEdicao key={produto.id} produto={produto} onCancelar={() => setEditandoId(null)} />
-            ) : (
-              <LinhaVisualizacao key={produto.id} produto={produto} onEditar={() => setEditandoId(produto.id)} />
-            ),
-          )}
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {modoEdicaoTotal ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={salvarTudo}
+              disabled={salvandoTudo}
+              className="h-8 rounded-md bg-[var(--accent)] px-3 text-[12.5px] font-semibold text-[var(--accent-ink)] disabled:opacity-60"
+            >
+              {salvandoTudo ? "Salvando…" : "Salvar tudo"}
+            </button>
+            <button
+              type="button"
+              onClick={cancelarEdicaoTotal}
+              disabled={salvandoTudo}
+              className="h-8 rounded-md border border-[var(--border)] px-3 text-[12.5px] font-medium text-[var(--ink-muted)] disabled:opacity-60"
+            >
+              Cancelar
+            </button>
+            {erroTudo && <p className="text-[12px] text-[var(--bad)]">{erroTudo}</p>}
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={iniciarEdicaoTotal}
+            disabled={produtos.length === 0}
+            className="h-8 rounded-md border border-[var(--border)] px-3 text-[12.5px] font-medium text-[var(--ink-muted)] hover:text-[var(--ink)] disabled:opacity-50"
+          >
+            ✏️ Editar tabela
+          </button>
+        )}
+      </div>
 
-          {produtos.length === 0 && (
+      <div className="max-h-[65vh] overflow-auto rounded-[10px] border border-[var(--border)] bg-[var(--surface)]">
+        <table className="w-full min-w-[960px] border-collapse text-[13.5px]">
+          <thead>
             <tr>
-              <td colSpan={6} className="p-10 text-center text-[var(--ink-muted)]">
-                Nenhum produto foi importado nesse job.
-              </td>
+              <Th>Produto</Th>
+              <Th>Código</Th>
+              <Th>Marca</Th>
+              <Th align="right">Preço</Th>
+              <Th>Especificações</Th>
+              <Th align="right"> </Th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {produtos.map((produto) =>
+              modoEdicaoTotal ? (
+                <LinhaEdicaoEmLote
+                  key={produto.id}
+                  url={produto.url_produto}
+                  valores={edicoes[produto.id] ?? camposIniciais(produto)}
+                  onChange={(campo, valor) => atualizarCampo(produto.id, campo, valor)}
+                />
+              ) : editandoId === produto.id ? (
+                <LinhaEdicao key={produto.id} produto={produto} onCancelar={() => setEditandoId(null)} />
+              ) : (
+                <LinhaVisualizacao key={produto.id} produto={produto} onEditar={() => setEditandoId(produto.id)} />
+              ),
+            )}
+
+            {produtos.length === 0 && (
+              <tr>
+                <td colSpan={6} className="p-10 text-center text-[var(--ink-muted)]">
+                  Nenhum produto foi importado nesse job.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -136,11 +248,12 @@ const CAMPO_CLASS =
   "h-8 w-full rounded-md border border-[var(--border)] bg-[var(--background)] px-2 font-[family-name:var(--font-body)] text-[13px] text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]";
 
 function LinhaEdicao({ produto, onCancelar }: { produto: BenchmarkProdutoRow; onCancelar: () => void }) {
-  const [nome, setNome] = useState(produto.nome ?? "");
-  const [codigo, setCodigo] = useState(produto.codigo ?? "");
-  const [marca, setMarca] = useState(produto.marca ?? "");
-  const [preco, setPreco] = useState(produto.preco !== null ? String(produto.preco).replace(".", ",") : "");
-  const [especTexto, setEspecTexto] = useState(especificacoesParaTexto(produto.especificacoes));
+  const camposIniciaisProduto = camposIniciais(produto);
+  const [nome, setNome] = useState(camposIniciaisProduto.nome);
+  const [codigo, setCodigo] = useState(camposIniciaisProduto.codigo);
+  const [marca, setMarca] = useState(camposIniciaisProduto.marca);
+  const [preco, setPreco] = useState(camposIniciaisProduto.preco);
+  const [especTexto, setEspecTexto] = useState(camposIniciaisProduto.especTexto);
   const [erro, setErro] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -213,6 +326,60 @@ function LinhaEdicao({ produto, onCancelar }: { produto: BenchmarkProdutoRow; on
           </button>
         </div>
         {erro && <p className="mt-1 max-w-[140px] text-[10.5px] text-[var(--bad)]">{erro}</p>}
+      </td>
+    </tr>
+  );
+}
+
+/** Mesma linha de campos da edição individual, mas sem Salvar/Cancelar próprios — o estado vive no `ProdutosTable` (modo "Editar tabela") e é salvo tudo junto. */
+function LinhaEdicaoEmLote({
+  url,
+  valores,
+  onChange,
+}: {
+  url: string;
+  valores: CamposEdicao;
+  onChange: (campo: keyof CamposEdicao, valor: string) => void;
+}) {
+  return (
+    <tr className="border-b border-[var(--border)]/60 bg-[var(--surface-alt)] align-top last:border-0">
+      <td className="px-3.5 py-2.5">
+        <input value={valores.nome} onChange={(e) => onChange("nome", e.target.value)} className={CAMPO_CLASS} />
+      </td>
+      <td className="px-3.5 py-2.5">
+        <input value={valores.codigo} onChange={(e) => onChange("codigo", e.target.value)} className={CAMPO_CLASS} />
+      </td>
+      <td className="px-3.5 py-2.5">
+        <input value={valores.marca} onChange={(e) => onChange("marca", e.target.value)} className={CAMPO_CLASS} />
+      </td>
+      <td className="px-3.5 py-2.5">
+        <input
+          value={valores.preco}
+          onChange={(e) => onChange("preco", e.target.value)}
+          placeholder="9,90"
+          className={`${CAMPO_CLASS} text-right tabular-nums`}
+        />
+      </td>
+      <td className="px-3.5 py-2.5">
+        <textarea
+          rows={2}
+          value={valores.especTexto}
+          onChange={(e) => onChange("especTexto", e.target.value)}
+          placeholder={"Rótulo: Valor"}
+          className={`${CAMPO_CLASS} h-auto resize-y py-1.5`}
+        />
+      </td>
+      <td className="px-3.5 py-2.5 text-right">
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label="Abrir produto original"
+          title="Abrir produto original"
+          className="inline-block rounded-md p-1.5 text-[var(--ink-muted)] hover:bg-[var(--surface-alt)] hover:text-[var(--accent)]"
+        >
+          🔗
+        </a>
       </td>
     </tr>
   );

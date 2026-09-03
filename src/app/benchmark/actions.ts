@@ -1,5 +1,6 @@
 "use server";
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import {
   criarBenchmarkJob,
@@ -58,8 +59,8 @@ export type AtualizarProdutoInput = {
   especificacoesTexto: string;
 };
 
-/** Edita um produto já importado (link, cadastro manual ou lote) — corrige o que o scraping trouxe errado. */
-export async function atualizarProdutoBenchmark(input: AtualizarProdutoInput): Promise<void> {
+/** Validação + gravação de 1 produto — compartilhado entre a edição de 1 linha e a edição em lote da tabela toda. */
+async function salvarProdutoBenchmark(supabase: SupabaseClient, input: AtualizarProdutoInput): Promise<void> {
   const nome = input.nome.trim();
   if (!nome) {
     throw new Error("Digite o nome do produto.");
@@ -71,7 +72,6 @@ export async function atualizarProdutoBenchmark(input: AtualizarProdutoInput): P
     throw new Error("Não entendi esse preço.");
   }
 
-  const supabase = await createClient();
   const { error } = await supabase
     .from("benchmark_produtos")
     .update({
@@ -86,6 +86,41 @@ export async function atualizarProdutoBenchmark(input: AtualizarProdutoInput): P
   if (error) {
     throw new Error(`Falha ao salvar o produto: ${error.message}`);
   }
+}
+
+/** Edita um produto já importado (link, cadastro manual ou lote) — corrige o que o scraping trouxe errado. */
+export async function atualizarProdutoBenchmark(input: AtualizarProdutoInput): Promise<void> {
+  const supabase = await createClient();
+  await salvarProdutoBenchmark(supabase, input);
+}
+
+export type AtualizarProdutoLoteResultado = {
+  totalSalvo: number;
+  erros: { produtoId: string; mensagem: string }[];
+};
+
+/**
+ * Modo "editar tabela toda": salva várias linhas de uma vez. Cada linha é
+ * validada e gravada independente — se uma falhar (ex: preço inválido), as
+ * outras são salvas normalmente e só a linha com problema volta em `erros`.
+ */
+export async function atualizarProdutosBenchmarkEmLote(
+  itens: AtualizarProdutoInput[],
+): Promise<AtualizarProdutoLoteResultado> {
+  const supabase = await createClient();
+  let totalSalvo = 0;
+  const erros: { produtoId: string; mensagem: string }[] = [];
+
+  for (const item of itens) {
+    try {
+      await salvarProdutoBenchmark(supabase, item);
+      totalSalvo += 1;
+    } catch (err) {
+      erros.push({ produtoId: item.produtoId, mensagem: err instanceof Error ? err.message : "Falha ao salvar." });
+    }
+  }
+
+  return { totalSalvo, erros };
 }
 
 /** Exclui só esse produto (mantém o resto do job) e ajusta o contador de "importados" do job pra continuar batendo com o que realmente sobrou. */
