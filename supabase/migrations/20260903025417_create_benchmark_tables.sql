@@ -26,7 +26,7 @@ create table public.benchmark_jobs (
   id uuid primary key default gen_random_uuid(),
   url_origem text not null,
   site_origem text,
-  tipo text check (tipo in ('produto', 'categoria')),
+  tipo text check (tipo in ('produto', 'categoria', 'manual')),
   status text not null default 'pendente'
     check (status in ('pendente', 'processando', 'concluido', 'erro')),
   total_encontrado integer not null default 0,
@@ -42,7 +42,7 @@ create table public.benchmark_jobs (
 comment on table public.benchmark_jobs is
   'Um job por link colado pelo usuário para importar produtos de um site concorrente.';
 comment on column public.benchmark_jobs.tipo is
-  'Detectado automaticamente ao processar: "produto" (uma página) ou "categoria" (listagem paginada).';
+  'Detectado automaticamente ao processar: "produto" (uma página) ou "categoria" (listagem paginada). "manual" é cadastro manual (site exige login, scraping não roda).';
 comment on column public.benchmark_jobs.status is
   'pendente -> processando -> concluido | erro.';
 comment on column public.benchmark_jobs.urls_pendentes is

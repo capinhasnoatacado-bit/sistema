@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { CLASSES_FONTES } from "@/lib/fonts";
 import { TEMA_ESCURO } from "@/lib/theme";
-import { ImportForm } from "./ImportForm";
+import { ImportPanel } from "./ImportPanel";
 import { JobProgress } from "./JobProgress";
 import { DeleteJobButton } from "./DeleteJobButton";
 import type { BenchmarkJob } from "@/lib/scraping/job-runner";
@@ -96,7 +96,7 @@ export default async function BenchmarkPage({
           </p>
         </header>
 
-        <ImportForm />
+        <ImportPanel />
 
         {jobSelecionado && (
           <div className="flex flex-col gap-4">

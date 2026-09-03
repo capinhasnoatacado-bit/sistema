@@ -21,7 +21,7 @@ export type BenchmarkJob = {
   id: string;
   url_origem: string;
   site_origem: string | null;
-  tipo: "produto" | "categoria" | null;
+  tipo: "produto" | "categoria" | "manual" | null;
   status: BenchmarkJobStatus;
   total_encontrado: number;
   total_importado: number;
@@ -53,6 +53,67 @@ export async function criarBenchmarkJob(supabase: SupabaseClient, urlOrigem: str
   }
 
   return data as BenchmarkJob;
+}
+
+export type NovoProdutoManual = {
+  urlProduto: string;
+  nome: string;
+  marca: string | null;
+  codigo: string | null;
+  preco: number | null;
+  especificacoes: Record<string, string>;
+};
+
+/**
+ * Cadastro manual: pra quando o site exige login e o scraping automático
+ * não consegue entrar — o usuário manda um print do produto pro Claude
+ * (na conversa), que lê os dados e cadastra aqui. Diferente do fluxo por
+ * link, não tem nada pra descobrir/processar depois: o job já nasce
+ * "concluido", com o único produto já salvo.
+ */
+export async function criarBenchmarkJobManual(
+  supabase: SupabaseClient,
+  produto: NovoProdutoManual,
+): Promise<BenchmarkJob> {
+  const agora = new Date().toISOString();
+
+  const { data: job, error: erroJob } = await supabase
+    .from("benchmark_jobs")
+    .insert({
+      url_origem: produto.urlProduto,
+      site_origem: safeHostname(produto.urlProduto),
+      tipo: "manual",
+      status: "concluido",
+      total_encontrado: 1,
+      total_importado: 1,
+      iniciado_em: agora,
+      finalizado_em: agora,
+    })
+    .select()
+    .single();
+
+  if (erroJob || !job) {
+    throw new Error(`Falha ao criar o job manual: ${erroJob?.message ?? "erro desconhecido"}`);
+  }
+
+  const { error: erroProduto } = await supabase.from("benchmark_produtos").insert({
+    job_id: job.id,
+    url_produto: produto.urlProduto,
+    nome: produto.nome,
+    marca: produto.marca,
+    codigo: produto.codigo,
+    preco: produto.preco,
+    especificacoes: produto.especificacoes,
+  });
+
+  if (erroProduto) {
+    // Job já foi criado mas o produto não salvou — melhor apagar o job
+    // órfão do que deixar um "concluído" com 0 produtos na lista.
+    await supabase.from("benchmark_jobs").delete().eq("id", job.id);
+    throw new Error(`Falha ao salvar o produto: ${erroProduto.message}`);
+  }
+
+  return job as BenchmarkJob;
 }
 
 async function buscarJob(supabase: SupabaseClient, jobId: string): Promise<BenchmarkJob> {
