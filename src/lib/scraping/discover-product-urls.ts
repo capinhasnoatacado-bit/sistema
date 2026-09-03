@@ -136,6 +136,13 @@ function findNextPageUrl(html: string, pageUrl: string, visited: Set<string>): s
   return candidate;
 }
 
+// Se a página já mostra pelo menos essa quantidade de links com cara de
+// card de produto, é uma listagem — ponto final. Alguns temas de loja
+// publicam JSON-LD de "Product" (de 1 item só, geralmente o primeiro da
+// grade) até em página de categoria; sem essa checagem primeiro, esse
+// JSON-LD "vaza" e faz a página inteira ser tratada como 1 produto único.
+const LISTAGEM_MIN_LINKS = 2;
+
 /**
  * Dado UM link colado pelo usuário, decide sozinho se é uma página de
  * produto (retorna só ela) ou uma listagem/categoria — nesse caso segue a
@@ -154,7 +161,11 @@ export async function discoverProductUrls(
   const { maxPaginas, maxProdutos, delayEntrePaginasMs } = { ...DEFAULTS, ...options };
 
   const firstHtml = await fetchHtml(startUrl);
-  if (pageDeclaresProductSchema(firstHtml)) {
+  const primeirosLinks = findProductLinks(firstHtml, startUrl);
+
+  // Só confia no JSON-LD dizendo "isso é 1 produto" quando a página NÃO
+  // mostra vários cards de produto de verdade (ver nota em LISTAGEM_MIN_LINKS).
+  if (primeirosLinks.length < LISTAGEM_MIN_LINKS && pageDeclaresProductSchema(firstHtml)) {
     return { tipo: "produto", produtoUrls: [startUrl], paginasVisitadas: 1 };
   }
 
@@ -163,10 +174,11 @@ export async function discoverProductUrls(
   let html = firstHtml;
   let currentUrl = startUrl;
   let paginasVisitadas = 0;
+  let linksDaPaginaAtual = primeirosLinks;
 
   while (true) {
     paginasVisitadas += 1;
-    for (const url of findProductLinks(html, currentUrl)) {
+    for (const url of linksDaPaginaAtual) {
       if (produtoUrls.size >= maxProdutos) break;
       produtoUrls.set(url, true);
     }
@@ -179,6 +191,7 @@ export async function discoverProductUrls(
     await delay(delayEntrePaginasMs);
     html = await fetchHtml(nextUrl);
     currentUrl = nextUrl;
+    linksDaPaginaAtual = findProductLinks(html, currentUrl);
   }
 
   if (produtoUrls.size === 0) {
