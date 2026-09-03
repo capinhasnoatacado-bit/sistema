@@ -143,6 +143,71 @@ function findNextPageUrl(html: string, pageUrl: string, visited: Set<string>): s
 // JSON-LD "vaza" e faz a página inteira ser tratada como 1 produto único.
 const LISTAGEM_MIN_LINKS = 2;
 
+// Alguns temas (comum em Tiendanube/Nuvemshop) carregam o resto da grade só
+// via JS ("carregar mais"/scroll infinito), sem nenhum link de próxima
+// página no HTML — mas aceitam navegação direta pra outras páginas por
+// parâmetro de query. Usado só como fallback, depois que `findNextPageUrl`
+// (baseado em link real) não encontra nada.
+const PAGINACAO_PARAM_CANDIDATOS = ["mpage", "page"];
+
+function currentPageNumberFromUrl(url: string, param: string): number {
+  try {
+    const numero = Number.parseInt(new URL(url).searchParams.get(param) ?? "", 10);
+    return Number.isFinite(numero) && numero > 0 ? numero : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function buildPaginaCandidata(baseUrl: string, param: string, numero: number): string | null {
+  try {
+    const url = new URL(baseUrl);
+    url.searchParams.set(param, String(numero));
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+type TentativaPaginacao = { url: string; html: string; links: string[]; param: string };
+
+/**
+ * Tenta os parâmetros de paginação candidatos (ou só o já descoberto numa
+ * página anterior do mesmo job) incrementando o número da página atual. Só
+ * considera sucesso se a página candidata trouxer pelo menos 1 link de
+ * produto ainda não coletado — assim não entra em loop quando o parâmetro
+ * não faz nada no site (a página candidata simplesmente repete a página 1).
+ */
+async function tentarProximaPaginaPorParametro(
+  currentUrl: string,
+  visited: Set<string>,
+  produtoUrlsConhecidos: Map<string, true>,
+  paramJaDescoberto: string | null,
+): Promise<TentativaPaginacao | null> {
+  const candidatos = paramJaDescoberto ? [paramJaDescoberto] : PAGINACAO_PARAM_CANDIDATOS;
+
+  for (const param of candidatos) {
+    const proximoNumero = currentPageNumberFromUrl(currentUrl, param) + 1;
+    const candidata = buildPaginaCandidata(currentUrl, param, proximoNumero);
+    if (!candidata || visited.has(candidata)) continue;
+
+    let html: string;
+    try {
+      html = await fetchHtml(candidata);
+    } catch {
+      continue;
+    }
+
+    const links = findProductLinks(html, candidata);
+    const trouxeAlgoNovo = links.some((url) => !produtoUrlsConhecidos.has(url));
+    if (trouxeAlgoNovo) {
+      return { url: candidata, html, links, param };
+    }
+  }
+
+  return null;
+}
+
 /**
  * Dado UM link colado pelo usuário, decide sozinho se é uma página de
  * produto (retorna só ela) ou uma listagem/categoria — nesse caso segue a
@@ -175,6 +240,9 @@ export async function discoverProductUrls(
   let currentUrl = startUrl;
   let paginasVisitadas = 0;
   let linksDaPaginaAtual = primeirosLinks;
+  // Uma vez que um parâmetro de paginação funcionar pra esse site, reusa
+  // direto nas páginas seguintes — não precisa reprovar os candidatos toda vez.
+  let paramPaginacaoDescoberto: string | null = null;
 
   while (true) {
     paginasVisitadas += 1;
@@ -183,15 +251,34 @@ export async function discoverProductUrls(
       produtoUrls.set(url, true);
     }
 
-    const reachedLimits = paginasVisitadas >= maxPaginas || produtoUrls.size >= maxProdutos;
-    const nextUrl = reachedLimits ? null : findNextPageUrl(html, currentUrl, visited);
-    if (!nextUrl) break;
+    if (paginasVisitadas >= maxPaginas || produtoUrls.size >= maxProdutos) break;
 
-    visited.add(nextUrl);
+    const nextUrl = findNextPageUrl(html, currentUrl, visited);
+    if (nextUrl) {
+      visited.add(nextUrl);
+      await delay(delayEntrePaginasMs);
+      html = await fetchHtml(nextUrl);
+      currentUrl = nextUrl;
+      linksDaPaginaAtual = findProductLinks(html, currentUrl);
+      continue;
+    }
+
+    // Sem link real de próxima página — tenta o fallback por parâmetro de
+    // query antes de desistir (ver `tentarProximaPaginaPorParametro`).
     await delay(delayEntrePaginasMs);
-    html = await fetchHtml(nextUrl);
-    currentUrl = nextUrl;
-    linksDaPaginaAtual = findProductLinks(html, currentUrl);
+    const tentativa = await tentarProximaPaginaPorParametro(
+      currentUrl,
+      visited,
+      produtoUrls,
+      paramPaginacaoDescoberto,
+    );
+    if (!tentativa) break;
+
+    paramPaginacaoDescoberto = tentativa.param;
+    visited.add(tentativa.url);
+    html = tentativa.html;
+    currentUrl = tentativa.url;
+    linksDaPaginaAtual = tentativa.links;
   }
 
   if (produtoUrls.size === 0) {
