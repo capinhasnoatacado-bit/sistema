@@ -452,18 +452,20 @@ const PADRAO_PRECO_BRUTO = /R\$\s?[\d.,]+/g;
 
 /**
  * Acha, em templates tipo Shopify/Liquid, o preço do pix perto da palavra
- * "pix" — mas em vez de olhar uma janela de caracteres sobre o texto todo da
- * página (frágil: a indentação/whitespace do HTML entre o preço e a palavra
- * "pix" varia muito de site pra site, e numa página de listagem tem "pix" de
- * vários produtos diferentes misturados no mesmo texto), usa a própria
- * estrutura do DOM: acha o MENOR elemento (por tamanho de texto) que contém
- * tanto "pix" quanto um preço "R$ X,XX" — isso isola o bloco daquele produto
- * específico (ex.: a <div class="parcelamento">ou R$ 4,75 via pix</div>) sem
- * pegar preço de outro produto/seção da página. Dentro desse elemento, fica
- * com o preço mais próximo (por posição no texto) da palavra "pix" — cobre
- * tanto "R$ 4,75 via pix" quanto "no pix R$ 4,75". `null` quando a página não
- * menciona pix — nesse caso quem chama cai pro resto da cadeia normal
- * (JSON-LD, meta, DOM genérico).
+ * "pix" — em vez de olhar uma janela de caracteres sobre o texto todo da
+ * página já achatado (frágil: a indentação/whitespace real do HTML varia
+ * muito de site pra site), usa a própria estrutura do DOM: acha o MENOR
+ * elemento (por tamanho de texto) que contém tanto "pix" quanto um preço
+ * "R$ X,XX" — isso isola o bloco daquele produto específico (ex.:
+ * "em 12x de R$ 0,54 ... ou R$ 4,75 via pix"), sem pegar preço de outro
+ * produto/seção da página. Dentro desse elemento, fica com o MAIOR preço
+ * encontrado — nesse bloco isolado os únicos valores que aparecem junto do
+ * "pix" são o da parcela (sempre o menor, ex. R$ 0,54) e o do pix em si
+ * (sempre maior que uma parcela isolada, ex. R$ 4,75); o preço parcelado
+ * cheio (R$ 5,00) fica de fora porque normalmente está num elemento irmão
+ * separado, que não teria a palavra "pix" junto — por isso não entra nessa
+ * busca. `null` quando a página não menciona pix — nesse caso quem chama
+ * cai pro resto da cadeia normal (JSON-LD, meta, DOM genérico).
  */
 function extractPixPriceFromDom($: CheerioAPI): number | null {
   let melhorTexto: string | null = null;
@@ -481,21 +483,15 @@ function extractPixPriceFromDom($: CheerioAPI): number | null {
   });
 
   if (melhorTexto === null) return null;
-
   const texto: string = melhorTexto;
-  const indicePix = texto.search(/pix/i);
-  if (indicePix === -1) return null;
+
+  const precosNoTrecho = texto.match(PADRAO_PRECO_BRUTO);
+  if (!precosNoTrecho) return null;
 
   let melhorPreco: number | null = null;
-  let melhorDistancia = Infinity;
-
-  for (const match of texto.matchAll(PADRAO_PRECO_BRUTO)) {
-    const preco = parsePtBrCurrency(match[0]);
-    if (preco === null || preco <= 0) continue;
-
-    const distancia = Math.abs((match.index ?? 0) - indicePix);
-    if (distancia < melhorDistancia) {
-      melhorDistancia = distancia;
+  for (const bruto of precosNoTrecho) {
+    const preco = parsePtBrCurrency(bruto);
+    if (preco !== null && preco > 0 && (melhorPreco === null || preco > melhorPreco)) {
       melhorPreco = preco;
     }
   }
