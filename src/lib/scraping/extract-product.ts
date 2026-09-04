@@ -448,46 +448,59 @@ function extractPriceFromDom($: CheerioAPI): number | null {
   return segundoMaiorOuUnico(precos);
 }
 
-// Quantos caracteres pra cada lado da palavra "pix" vale a pena olhar
-// procurando um preço próximo — largo o bastante pra pegar "R$ 34,90 no Pix"
-// ou "ou R$ 33,15 à vista no Pix", curto o bastante pra não pegar o preço de
-// outro produto/seção da página.
-const JANELA_PIX_CHARS = 100;
 const PADRAO_PRECO_BRUTO = /R\$\s?[\d.,]+/g;
 
 /**
- * Procura o texto "pix" na página inteira e, pra cada ocorrência, tenta
- * achar preços (padrão "R$ X,XX") perto dele — sites brasileiros quase
- * sempre mostram o desconto do pix como "R$ Y no pix" bem perto um do
- * outro, geralmente junto do preço parcelado ("R$ X ou R$ Y no pix") e às
- * vezes até do valor da parcela ("12x de R$ Z"). Fica com o segundo maior
- * entre todos os preços achados em qualquer janela (ver
- * segundoMaiorOuUnico) — NÃO o menor: o valor da parcela costuma ser bem
- * menor que o pix, então "pegar o menor" acabava trazendo a parcela em vez
- * do pix. `null` quando a página não menciona pix — nesse caso quem chama
- * cai pro resto da cadeia normal (JSON-LD, meta, DOM genérico).
+ * Acha, em templates tipo Shopify/Liquid, o preço do pix perto da palavra
+ * "pix" — mas em vez de olhar uma janela de caracteres sobre o texto todo da
+ * página (frágil: a indentação/whitespace do HTML entre o preço e a palavra
+ * "pix" varia muito de site pra site, e numa página de listagem tem "pix" de
+ * vários produtos diferentes misturados no mesmo texto), usa a própria
+ * estrutura do DOM: acha o MENOR elemento (por tamanho de texto) que contém
+ * tanto "pix" quanto um preço "R$ X,XX" — isso isola o bloco daquele produto
+ * específico (ex.: a <div class="parcelamento">ou R$ 4,75 via pix</div>) sem
+ * pegar preço de outro produto/seção da página. Dentro desse elemento, fica
+ * com o preço mais próximo (por posição no texto) da palavra "pix" — cobre
+ * tanto "R$ 4,75 via pix" quanto "no pix R$ 4,75". `null` quando a página não
+ * menciona pix — nesse caso quem chama cai pro resto da cadeia normal
+ * (JSON-LD, meta, DOM genérico).
  */
 function extractPixPriceFromDom($: CheerioAPI): number | null {
-  const texto = $("body").text();
-  const precos: number[] = [];
+  let melhorTexto: string | null = null;
 
-  const pixRegex = /pix/gi;
-  let match: RegExpExecArray | null;
-  while ((match = pixRegex.exec(texto)) !== null) {
-    const inicio = Math.max(0, match.index - JANELA_PIX_CHARS);
-    const fim = Math.min(texto.length, match.index + JANELA_PIX_CHARS);
-    const trecho = texto.slice(inicio, fim);
+  $("*").each((_, el) => {
+    if (el.type !== "tag" || el.tagName === "script" || el.tagName === "style") return;
 
-    const precosNoTrecho = trecho.match(PADRAO_PRECO_BRUTO);
-    if (!precosNoTrecho) continue;
+    const texto = $(el).text();
+    if (!/pix/i.test(texto) || !PADRAO_PRECO_BRUTO.test(texto)) return;
+    PADRAO_PRECO_BRUTO.lastIndex = 0;
 
-    for (const bruto of precosNoTrecho) {
-      const preco = parsePtBrCurrency(bruto);
-      if (preco !== null && preco > 0) precos.push(preco);
+    if (melhorTexto === null || texto.length < melhorTexto.length) {
+      melhorTexto = texto;
+    }
+  });
+
+  if (melhorTexto === null) return null;
+
+  const texto: string = melhorTexto;
+  const indicePix = texto.search(/pix/i);
+  if (indicePix === -1) return null;
+
+  let melhorPreco: number | null = null;
+  let melhorDistancia = Infinity;
+
+  for (const match of texto.matchAll(PADRAO_PRECO_BRUTO)) {
+    const preco = parsePtBrCurrency(match[0]);
+    if (preco === null || preco <= 0) continue;
+
+    const distancia = Math.abs((match.index ?? 0) - indicePix);
+    if (distancia < melhorDistancia) {
+      melhorDistancia = distancia;
+      melhorPreco = preco;
     }
   }
 
-  return segundoMaiorOuUnico(precos);
+  return melhorPreco;
 }
 
 function extractImageFromDom($: CheerioAPI): string | null {
