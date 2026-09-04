@@ -4,6 +4,21 @@ import { parsePtBrCurrency } from "./parse-price";
 import type { ExtractedProduct } from "./types";
 
 /**
+ * Entre vários preços encontrados perto um do outro pro mesmo produto, o
+ * maior costuma ser o parcelado e o segundo maior o à vista/pix — usado nas
+ * 3 camadas de extração de preço (JSON-LD com múltiplas ofertas, texto perto
+ * de "pix", DOM genérico). NÃO é o menor valor puro e simples: o valor da
+ * PARCELA (ex: "12x de R$ 3,33") também aparece perto do preço total e é bem
+ * menor que tudo, então "pegar o menor" acaba pegando a parcela por engano.
+ * Com 0 ou 1 preço encontrado, devolve o que tiver (não tem "segundo" pra pegar).
+ */
+function segundoMaiorOuUnico(precos: number[]): number | null {
+  if (precos.length === 0) return null;
+  const ordenados = [...precos].sort((a, b) => b - a);
+  return ordenados.length >= 2 ? ordenados[1] : ordenados[0];
+}
+
+/**
  * Extrai os dados de UM produto a partir do HTML da sua página, sem saber
  * nada sobre a plataforma de e-commerce que gerou a página. A estratégia é
  * em camadas, da fonte mais confiável para a mais arriscada — cada camada
@@ -238,24 +253,23 @@ function firstString(value: unknown): string | null {
 
 /**
  * Quando a página publica mais de uma oferta pro mesmo produto (ex: preço
- * parcelado e preço à vista/pix como ofertas separadas), fica com a MENOR —
- * mesmo raciocínio do pix no DOM (ver extractPixPriceFromDom): entre preços
- * declarados pra um produto, o menor tende a ser o à vista/pix.
+ * parcelado e preço à vista/pix como ofertas separadas), fica com o segundo
+ * maior (ver segundoMaiorOuUnico) — o maior costuma ser o parcelado.
  */
 function extractOfferPrice(offers: unknown): number | null {
   if (!offers) return null;
   const offerList = Array.isArray(offers) ? offers : [offers];
-  let menor: number | null = null;
+  const precos: number[] = [];
 
   for (const offer of offerList) {
     if (offer && typeof offer === "object") {
       const o = offer as Record<string, unknown>;
       const price = parsePtBrCurrency((o.price ?? o.lowPrice) as string | number | null | undefined);
-      if (price !== null && (menor === null || price < menor)) menor = price;
+      if (price !== null) precos.push(price);
     }
   }
 
-  return menor;
+  return segundoMaiorOuUnico(precos);
 }
 
 function extractAdditionalProperties(node: Record<string, unknown>): Record<string, string> {
@@ -418,21 +432,20 @@ function extractH1($: CheerioAPI): string | null {
 const PRICE_SELECTOR = ['[itemprop="price"]', '[class*="price" i]', '[class*="preco" i]', "[data-price]"].join(", ");
 
 /**
- * Entre os elementos com cara de preço na página, fica com o MENOR valor
- * encontrado (não o primeiro) — sites costumam mostrar o preço parcelado
- * (maior) em destaque e o à vista/pix (menor) num elemento próximo com a
- * mesma classe "price"/"preco"; sem pegar o menor, essa camada quase sempre
- * devolveria o parcelado.
+ * Entre os elementos com cara de preço na página, fica com o segundo maior
+ * (ver segundoMaiorOuUnico) — sites costumam mostrar o preço parcelado
+ * (maior) em destaque e o à vista/pix logo depois, com a mesma classe
+ * "price"/"preco".
  */
 function extractPriceFromDom($: CheerioAPI): number | null {
-  let menor: number | null = null;
+  const precos: number[] = [];
   for (const el of $(PRICE_SELECTOR).toArray()) {
     const $el = $(el);
     const raw = $el.attr("content") ?? $el.attr("data-price") ?? $el.text();
     const price = parsePtBrCurrency(raw);
-    if (price !== null && price > 0 && (menor === null || price < menor)) menor = price;
+    if (price !== null && price > 0) precos.push(price);
   }
-  return menor;
+  return segundoMaiorOuUnico(precos);
 }
 
 // Quantos caracteres pra cada lado da palavra "pix" vale a pena olhar
@@ -444,16 +457,19 @@ const PADRAO_PRECO_BRUTO = /R\$\s?[\d.,]+/g;
 
 /**
  * Procura o texto "pix" na página inteira e, pra cada ocorrência, tenta
- * achar um preço (padrão "R$ X,XX") perto dele — sites brasileiros quase
+ * achar preços (padrão "R$ X,XX") perto dele — sites brasileiros quase
  * sempre mostram o desconto do pix como "R$ Y no pix" bem perto um do
- * outro. Fica com o MENOR preço achado em qualquer janela, já que às vezes
- * o preço "de"/parcelado (maior) também cai dentro da mesma janela. `null`
- * quando a página não menciona pix — nesse caso quem chama cai pro resto da
- * cadeia normal (JSON-LD, meta, DOM genérico).
+ * outro, geralmente junto do preço parcelado ("R$ X ou R$ Y no pix") e às
+ * vezes até do valor da parcela ("12x de R$ Z"). Fica com o segundo maior
+ * entre todos os preços achados em qualquer janela (ver
+ * segundoMaiorOuUnico) — NÃO o menor: o valor da parcela costuma ser bem
+ * menor que o pix, então "pegar o menor" acabava trazendo a parcela em vez
+ * do pix. `null` quando a página não menciona pix — nesse caso quem chama
+ * cai pro resto da cadeia normal (JSON-LD, meta, DOM genérico).
  */
 function extractPixPriceFromDom($: CheerioAPI): number | null {
   const texto = $("body").text();
-  let menor: number | null = null;
+  const precos: number[] = [];
 
   const pixRegex = /pix/gi;
   let match: RegExpExecArray | null;
@@ -467,11 +483,11 @@ function extractPixPriceFromDom($: CheerioAPI): number | null {
 
     for (const bruto of precosNoTrecho) {
       const preco = parsePtBrCurrency(bruto);
-      if (preco !== null && preco > 0 && (menor === null || preco < menor)) menor = preco;
+      if (preco !== null && preco > 0) precos.push(preco);
     }
   }
 
-  return menor;
+  return segundoMaiorOuUnico(precos);
 }
 
 function extractImageFromDom($: CheerioAPI): string | null {
