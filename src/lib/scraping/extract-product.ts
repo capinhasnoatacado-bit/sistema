@@ -71,7 +71,19 @@ export function extractProduct(html: string, url: string): ExtractedProduct {
   // Preço do PIX tem prioridade quando a página menciona (costuma ser menor
   // que o preço parcelado que geralmente é o que vai pro JSON-LD/meta) — ver
   // extractPixPriceFromDom. Só cai pro resto quando a página não menciona pix.
-  const preco = extractPixPriceFromDom($) ?? fromJsonLd.preco ?? fromMeta.preco ?? extractPriceFromDom($);
+  const precoPix = extractPixPriceFromDom($);
+  const precoDom = extractPriceFromDom($);
+  const preco = precoPix ?? fromJsonLd.preco ?? fromMeta.preco ?? precoDom;
+  // DEBUG temporário — remover depois de descobrir de onde está saindo o
+  // preço errado. Aparece no terminal onde roda `npm run dev`.
+  console.log("[benchmark-debug]", {
+    url,
+    precoPix,
+    precoJsonLd: fromJsonLd.preco,
+    precoMeta: fromMeta.preco,
+    precoDom,
+    precoEscolhido: preco,
+  });
   const imagemUrl = resolveUrl(fromJsonLd.imagemUrl ?? fromMeta.imagemUrl ?? extractImageFromDom($), url);
 
   return {
