@@ -56,14 +56,17 @@ function formatComprimento(m: number | undefined) {
   return `${m.toString().replace(".", ",")}m`;
 }
 
-// Margem de lucro alvo SOBRE O PREÇO DE VENDA (não markup sobre o custo) —
-// margem = (venda - compra) / venda. Isolando venda: venda = compra / (1 - margem).
-// Ex: comprou por 3, margem 30% -> venda = 3 / 0,70 = 4,29 (confere:
-// (4,29 - 3) / 4,29 ≈ 30%, não os 43% que markup direto (compra * 1,30) daria).
+// Margem de lucro alvo SOBRE O PREÇO DE VENDA (não markup sobre o custo), já
+// descontando o imposto — os dois também como % do preço de venda. Preço de
+// venda = custo + imposto% * venda + margem% * venda, isolando venda:
+// venda = custo / (1 - imposto% - margem%).
+// Ex: comprou por 3 -> venda = 3 / (1 - 0,143 - 0,30) = 3 / 0,557 ≈ 5,39
+// (confere: 5,39 - 3 - 14,3% de 5,39 (0,77 de imposto) = 1,62, que é 30% de 5,39).
+const IMPOSTO_ALVO = 0.143;
 const MARGEM_LUCRO_ALVO = 0.3;
 
 function precoDeVendaSugerido(precoCompra: number): number {
-  return precoCompra / (1 - MARGEM_LUCRO_ALVO);
+  return precoCompra / (1 - IMPOSTO_ALVO - MARGEM_LUCRO_ALVO);
 }
 
 async function fetchCabos(): Promise<ProdutoRow[]> {
@@ -376,7 +379,7 @@ export default async function ComparadorPage({
               <Th>Potência</Th>
               <Th>Material</Th>
               <Th align="right">Preço/peça</Th>
-              <Th align="right">Venda (30%)</Th>
+              <Th align="right">Venda (30% + imp.)</Th>
               <Th>Concorrentes</Th>
               <Th align="right">MOQ</Th>
               <Th align="right">Pedido</Th>
