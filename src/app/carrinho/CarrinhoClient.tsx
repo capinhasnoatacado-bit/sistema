@@ -33,6 +33,12 @@ export function CarrinhoClient() {
   const [finalizando, iniciarFinalizacao] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
+  function limpar() {
+    if (!confirm("Esvaziar o carrinho inteiro? Não dá pra desfazer.")) return;
+    limparCarrinho();
+    setErro(null);
+  }
+
   function finalizar() {
     setErro(null);
     iniciarFinalizacao(async () => {
@@ -144,6 +150,13 @@ export function CarrinhoClient() {
 
         <div className="flex items-center gap-3">
           {erro && <p className="text-[13px] text-red-400">{erro}</p>}
+          <button
+            type="button"
+            onClick={limpar}
+            className="flex h-10 items-center rounded-md border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--ink-muted)] hover:text-[var(--ink)]"
+          >
+            Limpar carrinho
+          </button>
           <a
             href="/comparador"
             className="flex h-10 items-center rounded-md border border-[var(--border)] px-4 text-[13px] font-medium text-[var(--ink-muted)] hover:text-[var(--ink)]"

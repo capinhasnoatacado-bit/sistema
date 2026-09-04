@@ -37,6 +37,15 @@ export async function finalizarPedido(itens: ItemCarrinho[]): Promise<{ pedidoId
   const { error: erroItens } = await supabase.from("pedido_itens").insert(itensParaInserir);
 
   if (erroItens) {
+    // Violação de FK em produto_id: o item no carrinho (localStorage) aponta pra
+    // um produto que não existe mais — normalmente porque o banco local foi
+    // resetado (`supabase db reset` recria os produtos com id novo) depois que
+    // o item entrou no carrinho. Mensagem mais direta que o erro cru do Postgres.
+    if (erroItens.code === "23503") {
+      throw new Error(
+        "Um ou mais itens do carrinho não existem mais no catálogo (provavelmente o banco foi resetado depois que você adicionou eles). Clique em \"Limpar carrinho\" e adicione de novo pelo comparador.",
+      );
+    }
     throw new Error(`Falha ao salvar os itens do pedido: ${erroItens.message}`);
   }
 
