@@ -53,7 +53,10 @@ export function extractProduct(html: string, url: string): ExtractedProduct {
     findCodigoEmEspecificacoes(especificacoes),
     extractCodigoDoNome(nome),
   );
-  const preco = fromJsonLd.preco ?? fromMeta.preco ?? extractPriceFromDom($);
+  // Preço do PIX tem prioridade quando a página menciona (costuma ser menor
+  // que o preço parcelado que geralmente é o que vai pro JSON-LD/meta) — ver
+  // extractPixPriceFromDom. Só cai pro resto quando a página não menciona pix.
+  const preco = extractPixPriceFromDom($) ?? fromJsonLd.preco ?? fromMeta.preco ?? extractPriceFromDom($);
   const imagemUrl = resolveUrl(fromJsonLd.imagemUrl ?? fromMeta.imagemUrl ?? extractImageFromDom($), url);
 
   return {
@@ -233,17 +236,26 @@ function firstString(value: unknown): string | null {
   return null;
 }
 
+/**
+ * Quando a página publica mais de uma oferta pro mesmo produto (ex: preço
+ * parcelado e preço à vista/pix como ofertas separadas), fica com a MENOR —
+ * mesmo raciocínio do pix no DOM (ver extractPixPriceFromDom): entre preços
+ * declarados pra um produto, o menor tende a ser o à vista/pix.
+ */
 function extractOfferPrice(offers: unknown): number | null {
   if (!offers) return null;
   const offerList = Array.isArray(offers) ? offers : [offers];
+  let menor: number | null = null;
+
   for (const offer of offerList) {
     if (offer && typeof offer === "object") {
       const o = offer as Record<string, unknown>;
       const price = parsePtBrCurrency((o.price ?? o.lowPrice) as string | number | null | undefined);
-      if (price !== null) return price;
+      if (price !== null && (menor === null || price < menor)) menor = price;
     }
   }
-  return null;
+
+  return menor;
 }
 
 function extractAdditionalProperties(node: Record<string, unknown>): Record<string, string> {
@@ -405,14 +417,61 @@ function extractH1($: CheerioAPI): string | null {
 
 const PRICE_SELECTOR = ['[itemprop="price"]', '[class*="price" i]', '[class*="preco" i]', "[data-price]"].join(", ");
 
+/**
+ * Entre os elementos com cara de preço na página, fica com o MENOR valor
+ * encontrado (não o primeiro) — sites costumam mostrar o preço parcelado
+ * (maior) em destaque e o à vista/pix (menor) num elemento próximo com a
+ * mesma classe "price"/"preco"; sem pegar o menor, essa camada quase sempre
+ * devolveria o parcelado.
+ */
 function extractPriceFromDom($: CheerioAPI): number | null {
+  let menor: number | null = null;
   for (const el of $(PRICE_SELECTOR).toArray()) {
     const $el = $(el);
     const raw = $el.attr("content") ?? $el.attr("data-price") ?? $el.text();
     const price = parsePtBrCurrency(raw);
-    if (price !== null && price > 0) return price;
+    if (price !== null && price > 0 && (menor === null || price < menor)) menor = price;
   }
-  return null;
+  return menor;
+}
+
+// Quantos caracteres pra cada lado da palavra "pix" vale a pena olhar
+// procurando um preço próximo — largo o bastante pra pegar "R$ 34,90 no Pix"
+// ou "ou R$ 33,15 à vista no Pix", curto o bastante pra não pegar o preço de
+// outro produto/seção da página.
+const JANELA_PIX_CHARS = 100;
+const PADRAO_PRECO_BRUTO = /R\$\s?[\d.,]+/g;
+
+/**
+ * Procura o texto "pix" na página inteira e, pra cada ocorrência, tenta
+ * achar um preço (padrão "R$ X,XX") perto dele — sites brasileiros quase
+ * sempre mostram o desconto do pix como "R$ Y no pix" bem perto um do
+ * outro. Fica com o MENOR preço achado em qualquer janela, já que às vezes
+ * o preço "de"/parcelado (maior) também cai dentro da mesma janela. `null`
+ * quando a página não menciona pix — nesse caso quem chama cai pro resto da
+ * cadeia normal (JSON-LD, meta, DOM genérico).
+ */
+function extractPixPriceFromDom($: CheerioAPI): number | null {
+  const texto = $("body").text();
+  let menor: number | null = null;
+
+  const pixRegex = /pix/gi;
+  let match: RegExpExecArray | null;
+  while ((match = pixRegex.exec(texto)) !== null) {
+    const inicio = Math.max(0, match.index - JANELA_PIX_CHARS);
+    const fim = Math.min(texto.length, match.index + JANELA_PIX_CHARS);
+    const trecho = texto.slice(inicio, fim);
+
+    const precosNoTrecho = trecho.match(PADRAO_PRECO_BRUTO);
+    if (!precosNoTrecho) continue;
+
+    for (const bruto of precosNoTrecho) {
+      const preco = parsePtBrCurrency(bruto);
+      if (preco !== null && preco > 0 && (menor === null || preco < menor)) menor = preco;
+    }
+  }
+
+  return menor;
 }
 
 function extractImageFromDom($: CheerioAPI): string | null {
