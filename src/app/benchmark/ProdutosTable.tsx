@@ -10,6 +10,7 @@ import {
 } from "./actions";
 import { AtualizarPrecosButton } from "./AtualizarPrecosButton";
 import { dividirEspecificacoes, valoresDasColunas, type ColunaCategoria } from "@/lib/scraping/category-columns";
+import { parsePtBrCurrency } from "@/lib/scraping/parse-price";
 
 export type BenchmarkProdutoRow = {
   id: string;
@@ -121,6 +122,7 @@ export function ProdutosTable({
   const [modoEdicaoTotal, setModoEdicaoTotal] = useState(false);
   const [edicoes, setEdicoes] = useState<Record<string, CamposEdicao>>({});
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [descontoPercentual, setDescontoPercentual] = useState("");
   const [erroTudo, setErroTudo] = useState<string | null>(null);
   const [salvandoTudo, startTransitionTudo] = useTransition();
   const [excluindoSelecionados, startTransitionExcluir] = useTransition();
@@ -140,6 +142,7 @@ export function ProdutosTable({
     setModoEdicaoTotal(false);
     setEdicoes({});
     setSelecionados(new Set());
+    setDescontoPercentual("");
     setErroTudo(null);
   }
 
@@ -184,6 +187,42 @@ export function ProdutosTable({
     });
   }
 
+  /**
+   * Aplica X% de desconto sobre o preço atual dos produtos selecionados —
+   * só nos campos de edição (o usuário ainda revisa e clica em "Salvar
+   * tudo" pra gravar de verdade). Útil pra corrigir de uma vez o preço de
+   * vários produtos quando o scraping trouxe o valor parcelado/cheio em vez
+   * do preço à vista/pix — dá pra selecionar todos ("Selecionar todos os
+   * produtos" no cabeçalho da tabela) e aplicar o desconto médio do pix
+   * daquele fornecedor.
+   */
+  function aplicarDescontoSelecionados() {
+    setErroTudo(null);
+    if (selecionados.size === 0) return;
+
+    const percentual = parsePtBrCurrency(descontoPercentual);
+    if (percentual === null || percentual <= 0 || percentual >= 100) {
+      setErroTudo("Informe um desconto entre 0 e 100%.");
+      return;
+    }
+
+    setEdicoes((atual) => {
+      const novo = { ...atual };
+      for (const id of selecionados) {
+        const produto = produtos.find((p) => p.id === id);
+        const campos = novo[id] ?? (produto ? camposIniciais(produto, colunasEfetivas) : undefined);
+        if (!campos) continue;
+
+        const precoAtual = parsePtBrCurrency(campos.preco);
+        if (precoAtual === null) continue;
+
+        const precoComDesconto = precoAtual * (1 - percentual / 100);
+        novo[id] = { ...campos, preco: precoComDesconto.toFixed(2).replace(".", ",") };
+      }
+      return novo;
+    });
+  }
+
   function salvarTudo() {
     setErroTudo(null);
     startTransitionTudo(async () => {
@@ -210,6 +249,7 @@ export function ProdutosTable({
         setModoEdicaoTotal(false);
         setEdicoes({});
         setSelecionados(new Set());
+        setDescontoPercentual("");
       }
     });
   }
@@ -236,14 +276,35 @@ export function ProdutosTable({
               Cancelar
             </button>
             {selecionados.size > 0 && (
-              <button
-                type="button"
-                onClick={excluirSelecionados}
-                disabled={excluindoSelecionados}
-                className="h-8 rounded-md border border-[var(--bad-border)] bg-[var(--bad-bg)] px-3 text-[12.5px] font-medium text-[var(--bad)] disabled:opacity-60"
-              >
-                {excluindoSelecionados ? "Excluindo…" : `🗑️ Excluir selecionados (${selecionados.size})`}
-              </button>
+              <>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    value={descontoPercentual}
+                    onChange={(e) => setDescontoPercentual(e.target.value)}
+                    placeholder="5"
+                    inputMode="decimal"
+                    aria-label="Desconto % a aplicar sobre o preço dos selecionados"
+                    className="h-8 w-16 rounded-md border border-[var(--border)] bg-[var(--background)] px-2 text-right text-[12.5px] tabular-nums text-[var(--ink)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                  />
+                  <span className="text-[12.5px] text-[var(--ink-muted)]">%</span>
+                  <button
+                    type="button"
+                    onClick={aplicarDescontoSelecionados}
+                    className="h-8 rounded-md border border-[var(--border)] px-3 text-[12.5px] font-medium text-[var(--ink-muted)] hover:text-[var(--ink)]"
+                    title="Aplica o desconto sobre o preço atual dos selecionados — revise e clique em &quot;Salvar tudo&quot; pra gravar"
+                  >
+                    💸 Aplicar desconto pix ({selecionados.size})
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={excluirSelecionados}
+                  disabled={excluindoSelecionados}
+                  className="h-8 rounded-md border border-[var(--bad-border)] bg-[var(--bad-bg)] px-3 text-[12.5px] font-medium text-[var(--bad)] disabled:opacity-60"
+                >
+                  {excluindoSelecionados ? "Excluindo…" : `🗑️ Excluir selecionados (${selecionados.size})`}
+                </button>
+              </>
             )}
             {erroTudo && <p className="text-[12px] text-[var(--bad)]">{erroTudo}</p>}
           </div>
