@@ -469,3 +469,87 @@ join (values
 where f.nome = 'HREBOS'
 on conflict (fornecedor_id, codigo) do nothing;
 
+-- ============================================================
+-- Fornecedor: FAM
+-- ============================================================
+-- O catálogo da FAM traz 2 preços por produto (individual avulso vs. caixa
+-- fechada) e 2 formas de pagamento (à vista vs. a prazo) para cada um. Por
+-- pedido do usuário, aqui preco_unitario é sempre o preço INDIVIDUAL À VISTA
+-- (moq = 1) — diferente da convenção de moq em centenas usada nos outros
+-- fornecedores, que refletiam o preço de caixa fechada deles.
+-- Cabo de áudio (P2 3,5mm, seção "OUTROS" do catálogo) não foi incluído —
+-- fora do escopo de cabo carregador/dados do piloto.
+insert into fornecedores (nome) values ('FAM')
+  on conflict (nome) do nothing;
+
+insert into produtos (categoria, codigo, nome, preco_unitario, moq, especificacoes, observacoes, fornecedor_id)
+select v.categoria, v.codigo, v.nome, v.preco_unitario, v.moq, v.especificacoes, v.observacoes, f.id
+from fornecedores f
+join (values
+    ('cabo', 'FCA-C1C6', 'Cabo Type-C → Type-C', 11.25, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "material": "TPE + Tecido", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-C2C6', 'Cabo Type-C → Type-C', 12.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 2, "material": "Tecido", "cor": "Cinza"}'::jsonb, null),
+    ('cabo', 'FCA-C1C', 'Cabo Type-C → Type-C', 10.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "TPE", "cor": "Branco, Preto"}'::jsonb, null),
+    ('cabo', 'FCA-C2C2', 'Cabo Type-C → Type-C', 12.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 2, "material": "TPE", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-C1C7', 'Cabo Type-C → Type-C', 12.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "TPE + Tecido", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-C1C8', 'Cabo Type-C → Type-C', 15.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "TPE + Tecido + Metal", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-1C10', 'Cabo Type-C → Type-C Thunderbolt 4', 35.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 1.2, "amperagem": "240W", "material": "Thunderbolt 4; suporta até 40Gbps de dados", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-MC1C', 'Cabo Type-C → Type-C Magnético', 30.00, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "Magnético; TPE + Tecido + Metal", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-AC1C', 'Cabo Type-C → Type-C', 9.35, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "TPE", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-5C1', 'Cabo Type-C → Lightning', 15.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Lightning", "comprimento_m": 1.2, "material": "TPE", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-5C5', 'Cabo Type-C → Lightning', 19.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Lightning", "comprimento_m": 2, "material": "TPE", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-5C16', 'Cabo Type-C → Lightning', 15.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Lightning", "comprimento_m": 1.2, "material": "TPE + Tecido", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-A5C1', 'Cabo Type-C → Lightning', 14.00, 1, '{"conector_origem": "Type-C", "conector_destino": "Lightning", "comprimento_m": 1.2, "material": "TPE", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-M5C1', 'Cabo Type-C → Lightning Magnético', 30.00, 1, '{"conector_origem": "Type-C", "conector_destino": "Lightning", "comprimento_m": 1.2, "material": "Magnético; Nylon + Metal", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-X510', 'Cabo USB-A → Lightning', 7.95, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-X810', 'Cabo USB-A → Micro-USB', 6.95, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 1, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-XC10', 'Cabo USB-A → Type-C', 7.95, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-B510', 'Cabo USB-A → Lightning', 7.95, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-B810', 'Cabo USB-A → Micro-USB', 6.95, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 1, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-BC10', 'Cabo USB-A → Type-C', 7.95, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-X530', 'Cabo USB-A → Lightning', 12.50, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 3, "material": "TPE Jacket", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-X830', 'Cabo USB-A → Micro-USB', 11.75, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 3, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-XC30', 'Cabo USB-A → Type-C', 12.25, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 3, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-E512', 'Cabo USB-A → Lightning', 9.45, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1.2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-E812', 'Cabo USB-A → Micro-USB', 7.90, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 1.2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-EC12', 'Cabo USB-A → Type-C', 9.45, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-X520', 'Cabo USB-A → Lightning', 9.95, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-X820', 'Cabo USB-A → Micro-USB', 9.00, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-XC20', 'Cabo USB-A → Type-C', 9.95, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-512-N', 'Cabo USB-A → Lightning', 10.50, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1.2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-812-N', 'Cabo USB-A → Micro-USB', 9.45, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 1.2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-C12-N', 'Cabo USB-A → Type-C', 10.45, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-802-N', 'Cabo USB-A → Micro-USB', 11.50, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-502-N', 'Cabo USB-A → Lightning', 12.50, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-C20-N', 'Cabo USB-A → Type-C', 12.50, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-051', 'Cabo USB-A → Lightning', 10.90, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1, "material": "TPE", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-S512N', 'Cabo USB-A → Lightning', 10.45, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1.2, "material": "Tecido", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-S812N', 'Cabo USB-A → Micro-USB', 9.45, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 1.2, "material": "Tecido", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-SC12N', 'Cabo USB-A → Type-C', 10.45, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "Tecido", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-2201', 'Cabo USB-A → Lightning Metal', 15.50, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1.2, "amperagem": "PD 100W", "material": "Nylon e Metal", "cor": "Preto, Rosa"}'::jsonb, null),
+    ('cabo', 'FCA-2202', 'Cabo USB-A → Type-C Metal', 15.50, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1.2, "amperagem": "PD 100W", "material": "Nylon e Metal", "cor": "Preto, Rosa"}'::jsonb, null),
+    ('cabo', 'FCA-2203', 'Cabo Type-C → Multiconector (Type-C + Lightning) Metal', 17.75, 1, '{"conector_origem": "Type-C", "conector_destino": "Multiconector (Type-C + Lightning)", "comprimento_m": 1.2, "amperagem": "PD 100W", "material": "Nylon e Metal; conector rotativo 2 em 1", "cor": "Preto, Rosa"}'::jsonb, null),
+    ('cabo', 'FCA-2204', 'Cabo Multiconector (Type-C + USB-A) → Multiconector (Type-C + Lightning) Metal', 25.50, 1, '{"conector_origem": "Multiconector (Type-C + USB-A)", "conector_destino": "Multiconector (Type-C + Lightning)", "comprimento_m": 1.2, "amperagem": "PD 100W", "material": "Nylon e Metal; adaptadores 2 em 1 nas duas pontas", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-R512', 'Cabo USB-A → Lightning Metal', 14.00, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1, "material": "TPE Jacket + mola metálica pintada", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-R812', 'Cabo USB-A → Micro-USB Metal', 13.25, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 1, "material": "TPE Jacket + mola metálica pintada", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-RC12', 'Cabo USB-A → Type-C Metal', 14.00, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1, "material": "TPE Jacket + mola metálica pintada", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-X5002', 'Cabo USB-A → Lightning', 4.90, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 0.2, "material": "TPE Jacket", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCA-X8002', 'Cabo USB-A → Micro-USB', 3.20, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 0.2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-XC002', 'Cabo USB-A → Type-C', 4.90, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 0.2, "material": "TPE Jacket", "cor": "Preto, Branco"}'::jsonb, null),
+    ('cabo', 'FCA-C15-OTG', 'Cabo OTG Type-C → USB-A Fêmea', 8.40, 1, '{"conector_origem": "Type-C", "conector_destino": "USB-A Fêmea (OTG)", "comprimento_m": 0.15, "material": "TPE", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-015-OTG', 'Cabo OTG Micro-USB → USB-A Fêmea', 5.40, 1, '{"conector_origem": "Micro-USB", "conector_destino": "USB-A Fêmea (OTG)", "comprimento_m": 0.15, "material": "TPE", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-515-OTG', 'Cabo OTG Lightning → USB-A Fêmea', 19.75, 1, '{"conector_origem": "Lightning", "conector_destino": "USB-A Fêmea (OTG)", "comprimento_m": 0.15, "material": "TPE", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-C52', 'Cabo USB-A → Type-C', 15.80, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1.2, "amperagem": "5A", "material": "Tecido, alumínio, nylon e TPE", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-K512', 'Cabo USB-A → Lightning', 12.90, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1.2, "material": "Tecido/Metal", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-K812', 'Cabo USB-A → Micro-USB', 12.20, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 1.2, "material": "Tecido/Metal", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-KC12', 'Cabo USB-A → Type-C', 12.90, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1.2, "material": "Tecido/Metal", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-1303', 'Cabo Multiconector (Type-C + Micro-USB + Lightning)', 16.50, 1, '{"conector_origem": "USB-A", "conector_destino": "Multiconector (Type-C + Micro-USB + Lightning)", "comprimento_m": 1.2, "amperagem": "3A", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-Q512', 'Cabo USB-A → Lightning', 10.60, 1, '{"conector_origem": "USB-A", "conector_destino": "Lightning", "comprimento_m": 1.2, "amperagem": "2.4A", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-Q812', 'Cabo USB-A → Micro-USB', 9.60, 1, '{"conector_origem": "USB-A", "conector_destino": "Micro-USB", "comprimento_m": 1.2, "amperagem": "3A", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-QC12', 'Cabo USB-A → Type-C', 10.60, 1, '{"conector_origem": "USB-A", "conector_destino": "Type-C", "comprimento_m": 1.2, "amperagem": "2.4A", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-5C8', 'Cabo Type-C → Lightning', 10.75, 1, '{"conector_origem": "Type-C", "conector_destino": "Lightning", "comprimento_m": 0.2, "amperagem": "3A", "cor": "Preto"}'::jsonb, null),
+    ('cabo', 'FCA-C8C', 'Cabo Type-C → Type-C', 6.00, 1, '{"conector_origem": "Type-C", "conector_destino": "Type-C", "comprimento_m": 0.2, "amperagem": "3A", "cor": "Branco"}'::jsonb, null),
+    ('cabo', 'FCM-151C', 'Cabo Type-C → Lightning (Certificado MFI Apple)', 49.95, 1, '{"conector_origem": "Type-C", "conector_destino": "Lightning", "comprimento_m": 1.2, "amperagem": "3A", "material": "Certificação MFI Apple (Made for iPhone/iPad/iPod)", "cor": "Branco"}'::jsonb, null)
+) as v(categoria, codigo, nome, preco_unitario, moq, especificacoes, observacoes) on true
+where f.nome = 'FAM'
+on conflict (fornecedor_id, codigo) do nothing;
+
