@@ -56,12 +56,14 @@ function formatComprimento(m: number | undefined) {
   return `${m.toString().replace(".", ",")}m`;
 }
 
-// Margem de lucro alvo sobre o preço de compra (markup, não margem sobre venda)
-// — 30% significa vender por 1,30x o que pagou pro fornecedor.
+// Margem de lucro alvo SOBRE O PREÇO DE VENDA (não markup sobre o custo) —
+// margem = (venda - compra) / venda. Isolando venda: venda = compra / (1 - margem).
+// Ex: comprou por 3, margem 30% -> venda = 3 / 0,70 = 4,29 (confere:
+// (4,29 - 3) / 4,29 ≈ 30%, não os 43% que markup direto (compra * 1,30) daria).
 const MARGEM_LUCRO_ALVO = 0.3;
 
 function precoDeVendaSugerido(precoCompra: number): number {
-  return precoCompra * (1 + MARGEM_LUCRO_ALVO);
+  return precoCompra / (1 - MARGEM_LUCRO_ALVO);
 }
 
 async function fetchCabos(): Promise<ProdutoRow[]> {
