@@ -70,20 +70,10 @@ export function extractProduct(html: string, url: string): ExtractedProduct {
   );
   // Preço do PIX tem prioridade quando a página menciona (costuma ser menor
   // que o preço parcelado que geralmente é o que vai pro JSON-LD/meta) — ver
-  // extractPixPriceFromDom. Só cai pro resto quando a página não menciona pix.
-  const precoPix = extractPixPriceFromDom($);
-  const precoDom = extractPriceFromDom($);
-  const preco = precoPix ?? fromJsonLd.preco ?? fromMeta.preco ?? precoDom;
-  // DEBUG temporário — remover depois de descobrir de onde está saindo o
-  // preço errado. Aparece no terminal onde roda `npm run dev`.
-  console.log("[benchmark-debug]", {
-    url,
-    precoPix,
-    precoJsonLd: fromJsonLd.preco,
-    precoMeta: fromMeta.preco,
-    precoDom,
-    precoEscolhido: preco,
-  });
+  // extractPixPriceFromDom. Só cai pro resto quando a página não menciona pix
+  // (ou quando o valor achado não passa na rede de segurança da função).
+  const precoReferencia = fromJsonLd.preco ?? fromMeta.preco;
+  const preco = extractPixPriceFromDom($, precoReferencia) ?? precoReferencia ?? extractPriceFromDom($);
   const imagemUrl = resolveUrl(fromJsonLd.imagemUrl ?? fromMeta.imagemUrl ?? extractImageFromDom($), url);
 
   return {
@@ -462,29 +452,42 @@ function extractPriceFromDom($: CheerioAPI): number | null {
 
 const PADRAO_PRECO_BRUTO = /R\$\s?[\d.,]+/g;
 
+// Elementos com cara de bloco de preço (mesma ideia do PRICE_SELECTOR, mais
+// "parcel" pra pegar o <p>/<div class="parcelamento"> comum em temas
+// Shopify). Restringe a busca do pix a esses blocos — não a página inteira
+// — porque descobrimos na prática que, fora de um bloco de preço, é comum
+// ter outros textos com "pix" e "R$" juntos que NÃO são o preço (ex.: um
+// selo de cashback tipo "ganhe R$ 0,25 de volta pagando no pix", que teria
+// um valor bem menor que o preço de verdade).
+const PIX_CONTAINER_SELECTOR = ['[itemprop="price"]', '[class*="price" i]', '[class*="preco" i]', '[class*="parcel" i]', "[data-price]"].join(
+  ", ",
+);
+
 /**
  * Acha, em templates tipo Shopify/Liquid, o preço do pix perto da palavra
  * "pix" — em vez de olhar uma janela de caracteres sobre o texto todo da
  * página já achatado (frágil: a indentação/whitespace real do HTML varia
- * muito de site pra site), usa a própria estrutura do DOM: acha o MENOR
- * elemento (por tamanho de texto) que contém tanto "pix" quanto um preço
+ * muito de site pra site), usa a própria estrutura do DOM: entre os
+ * elementos com cara de bloco de preço (PIX_CONTAINER_SELECTOR), acha o
+ * MENOR (por tamanho de texto) que contém tanto "pix" quanto um preço
  * "R$ X,XX" — isso isola o bloco daquele produto específico (ex.:
- * "em 12x de R$ 0,54 ... ou R$ 4,75 via pix"), sem pegar preço de outro
- * produto/seção da página. Dentro desse elemento, fica com o MAIOR preço
- * encontrado — nesse bloco isolado os únicos valores que aparecem junto do
- * "pix" são o da parcela (sempre o menor, ex. R$ 0,54) e o do pix em si
- * (sempre maior que uma parcela isolada, ex. R$ 4,75); o preço parcelado
- * cheio (R$ 5,00) fica de fora porque normalmente está num elemento irmão
- * separado, que não teria a palavra "pix" junto — por isso não entra nessa
- * busca. `null` quando a página não menciona pix — nesse caso quem chama
- * cai pro resto da cadeia normal (JSON-LD, meta, DOM genérico).
+ * "ou R$ 4,75 via pix"). Dentro desse elemento, fica com o MAIOR preço
+ * encontrado — quando o bloco junta a parcela e o pix (ex.: "em 12x de
+ * R$ 0,54 ... ou R$ 4,75 via pix"), a parcela é sempre bem menor que o
+ * pix. `null` quando não achou nada assim — nesse caso quem chama cai pro
+ * resto da cadeia normal (JSON-LD, meta, DOM genérico).
+ *
+ * `precoReferencia` (JSON-LD/meta, quando disponível) serve de rede de
+ * segurança: o preço do pix é sempre um desconto modesto sobre o preço
+ * cheio (na prática uns 5-10%), nunca uma fração pequena dele — se o valor
+ * achado for muito menor que a referência, quase certamente pegamos algum
+ * outro "R$ X" da página que não é o preço (cashback, pontos, frete etc.)
+ * e descartamos, devolvendo `null` pra cair pro resto da cadeia.
  */
-function extractPixPriceFromDom($: CheerioAPI): number | null {
+function extractPixPriceFromDom($: CheerioAPI, precoReferencia: number | null): number | null {
   let melhorTexto: string | null = null;
 
-  $("*").each((_, el) => {
-    if (el.type !== "tag" || el.tagName === "script" || el.tagName === "style") return;
-
+  $(PIX_CONTAINER_SELECTOR).each((_, el) => {
     const texto = $(el).text();
     if (!/pix/i.test(texto) || !PADRAO_PRECO_BRUTO.test(texto)) return;
     PADRAO_PRECO_BRUTO.lastIndex = 0;
@@ -506,6 +509,13 @@ function extractPixPriceFromDom($: CheerioAPI): number | null {
     if (preco !== null && preco > 0 && (melhorPreco === null || preco > melhorPreco)) {
       melhorPreco = preco;
     }
+  }
+
+  if (melhorPreco === null) return null;
+  if (precoReferencia !== null && precoReferencia > 0 && melhorPreco < precoReferencia * 0.5) {
+    // Achou um valor perto de "pix", mas longe demais do preço de referência
+    // pra ser o preço do pix de verdade (ver nota acima) — descarta.
+    return null;
   }
 
   return melhorPreco;
